@@ -1,0 +1,4 @@
+name: "tmux-cpu"
+url: "tmux-plugins/tmux-cpu"
+local: False
+source: ["cpu.tmux"]

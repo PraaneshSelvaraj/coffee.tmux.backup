@@ -1,0 +1,10 @@
+name: "spotify.demo"
+url: "PraaneshSelvara/spotify.demo"
+local: False
+tag: "v1.0.0"
+source: ["spotify.tmux"]
+env:
+  SPOTIPY_CLIENT_ID: "c42bf7e37d67484ea64d99e2575daa0b"
+  SPOTIPY_CLIENT_SECRET: "88414cae6a7741c7b85e5647d46fc904"
+  SPOTIPY_REDIRECT_URI: "http://127.0.0.1:8888/callback"
+  SPOTIFY_UPDATE_MODE: "AI"

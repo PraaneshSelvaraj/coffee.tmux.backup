@@ -1,0 +1,4 @@
+name: "tmux-net-speed"
+url: "tmux-plugins/tmux-net-speed"
+local: False
+source: ["net_speed.tmux"]
