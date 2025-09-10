@@ -1,21 +1,25 @@
+# plugin_manager_app.py
+import os
+import threading
+import time
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.layout import Layout
+from rich.style import Style
+from rich.box import ROUNDED
+from rich.console import Console, RenderableType
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static
-from rich.box import ROUNDED
-from rich.console import Console, RenderableType
-from rich.layout import Layout
-from rich.panel import Panel
-from rich.style import Style
-from rich.table import Table
-from rich.text import Text
-from core import PluginSourcer
+from textual import work
 from core import lock_file_manager as lfm
-import time
+from core import PluginSourcer
+from core import PluginUpdater
 
 console = Console()
 plugin_sourcer = PluginSourcer()
 
-# Theme Colors
 accent_color = "#7aa2f7"
 background_color = "#1a1b26"
 highlight_color = "#9ece6a"
@@ -25,112 +29,58 @@ section_color = "#e0af68"
 background_style = Style(bgcolor=background_color)
 
 VISIBLE_ROWS = 6
-TABS = ["Home", "Install", "Update", "Remove"]
-lock_file = lfm.read_lock_file()
+TABS = ["Home", "Install", "Update"]
 
-# --- Mock Data for Updates ---
-mock_updates = [
-    {
-        "name": "tmux-powerline",
-        "current_version": "v2.1.0",
-        "new_version": "v2.2.0",
-        "size": "2.3 MB",
-        "released": "3 days ago",
-        "changelog": [
-            "Fixed tmux 3.4 compatibility",
-            "Added new powerline segments",
-            "Performance improvements",
-            "Bug fixes for status bar",
-        ],
-        "dependencies": [],
-        "breaking": None,
-        "marked": True,
-        "progress": 75,
-    },
-    {
-        "name": "tmux-resurrect",
-        "current_version": "v4.0.0",
-        "new_version": "v4.1.0",
-        "size": "1.8 MB",
-        "released": "1 week ago",
-        "changelog": ["Restore layouts faster", "Bug fixes"],
-        "dependencies": [],
-        "breaking": None,
-        "marked": False,
-        "progress": 0,
-    },
-    {
-        "name": "battery-status",
-        "current_version": "v1.5.2",
-        "new_version": "v1.6.0",
-        "size": "512 KB",
-        "released": "5 days ago",
-        "changelog": ["Improved battery detection", "UI tweaks"],
-        "dependencies": [],
-        "breaking": None,
-        "marked": False,
-        "progress": 0,
-    },
-    {
-        "name": "weather-plugin",
-        "current_version": "v0.3.1",
-        "new_version": "v0.4.0",
-        "size": "1.2 MB",
-        "released": "2 weeks ago",
-        "changelog": ["Updated API support", "Fixed display bug"],
-        "dependencies": [],
-        "breaking": None,
-        "marked": False,
-        "progress": 0,
-    },
-]
-
-# --- Mock Data for Remove ---
-REMOVE_PLUGINS = [
-    {
-        "name": "tmux-powerline",
-        "version": "v4.1.0",
-        "size": "2.3 MB",
-        "installed": "3 days ago",
-        "dependencies": "None",
-    },
-    {
-        "name": "tmux-resurrect",
-        "version": "v4.1.0",
-        "size": "1.8 MB",
-        "installed": "5 days ago",
-        "dependencies": "None",
-    },
-    {
-        "name": "battery-status",
-        "version": "v1.6.0",
-        "size": "0.5 MB",
-        "installed": "2 days ago",
-        "dependencies": "None",
-    },
-    {
-        "name": "weather-plugin",
-        "version": "v0.4.0",
-        "size": "1.2 MB",
-        "installed": "7 days ago",
-        "dependencies": "None",
-    },
-]
+PLUGINS_DIR = os.path.expanduser("~/.tmux/coffee/plugins")
+plugin_updater = PluginUpdater(PLUGINS_DIR)
 
 
-# ---------------- APP STATE ----------------
 class AppState:
     def __init__(self):
         self.scroll_offset = 0
         self.current_selection = 0
         self.current_tab = "Home"
-        self.mode = "normal"  # "normal" | "search"
-        self.update_selected = 0  # Update tab
-        self.marked_for_removal = set()  # Remove tab
-        self.removing_progress = {}  # Remove tab progress
+        self.mode = "normal"
+        self.update_selected = 0
+        self.update_data = []
+        self.update_progress = {}
+        self.checking_updates = False
+        self._app_ref = None
+
+    def refresh_updates(self):
+        if not self.checking_updates:
+            self.checking_updates = True
+            self.update_data = []
+            self.update_progress = {}  # Reset progress
+            thread = threading.Thread(target=self._check_updates_async, daemon=True)
+            thread.start()
+
+    def _check_updates_async(self):
+        try:
+            updates = plugin_updater.check_for_updates()
+            self.update_data = updates
+        except Exception as e:
+            self.update_data = []
+            console.log(f"[ERROR] Error checking updates: {e}")
+        finally:
+            self.checking_updates = False
+            if self._app_ref:
+                # Use call_from_thread to safely update UI from background
+                self._app_ref.call_from_thread(self._app_ref.rich_display.refresh)
+
+    def update_progress_callback(self, plugin_name, progress):
+        self.update_progress[plugin_name] = progress
+        for plugin in self.update_data:
+            if plugin["name"] == plugin_name:
+                plugin["progress"] = progress
+                break
+        if self._app_ref:
+            self._app_ref.call_from_thread(self._app_ref.rich_display.refresh)
+
+    def bind_app(self, app):
+        self._app_ref = app
 
 
-# ---------------- TAB BASE ----------------
 class Tab:
     def __init__(self, name):
         self.name = name
@@ -139,9 +89,9 @@ class Tab:
         tabs = ""
         for tab in TABS:
             if tab == active_tab:
-                tabs += f"[bold reverse #1D8E5E bold white] {tab} [/]{'  '}"
+                tabs += f"[bold reverse {highlight_color} bold white] {tab} [/]{' '}"
             else:
-                tabs += f"[bold white] {tab} [/]{'  '}"
+                tabs += f"[bold white] {tab} [/]{' '}"
         return Panel(
             tabs,
             title="Coffee",
@@ -159,18 +109,20 @@ class Tab:
         return layout
 
 
-# ---------------- HOME TAB ----------------
 class HomeTab(Tab):
     def __init__(self):
         super().__init__("Home")
 
     def get_display_list(self):
+        # Read lockfile fresh each time so state is consistent with disk
+        lock_file = lfm.read_lock_file()
         plugins = lock_file.get("plugins", [])
         active = sorted(
-            [p for p in plugins if p["enabled"]], key=lambda x: x["name"].lower()
+            [p for p in plugins if p.get("enabled")], key=lambda x: x["name"].lower()
         )
         inactive = sorted(
-            [p for p in plugins if not p["enabled"]], key=lambda x: x["name"].lower()
+            [p for p in plugins if not p.get("enabled")],
+            key=lambda x: x["name"].lower(),
         )
         return (
             [{"type": "header", "text": "Active Plugins"}]
@@ -196,16 +148,16 @@ class HomeTab(Tab):
                 circle_style = (
                     selection_color
                     if is_selected
-                    else (highlight_color if plugin["enabled"] else "grey50")
+                    else (highlight_color if plugin.get("enabled") else "grey50")
                 )
                 plugin_name_style = (
                     f"bold {selection_color}"
                     if is_selected
-                    else ("white" if plugin["enabled"] else "dim white")
+                    else ("white" if plugin.get("enabled") else "dim white")
                 )
                 table.add_row(
                     Text.assemble(
-                        Text("  ● ", style=circle_style),
+                        Text(" ● ", style=circle_style),
                         Text(plugin["name"], style=plugin_name_style),
                     )
                 )
@@ -224,22 +176,23 @@ class HomeTab(Tab):
         selected_item = display_list[app_state.current_selection]
         if selected_item["type"] == "header":
             header_text = selected_item["text"]
+            lock_file = lfm.read_lock_file()
             plugins = lock_file.get("plugins", [])
             count = (
-                len([p for p in plugins if p["enabled"]])
+                len([p for p in plugins if p.get("enabled")])
                 if header_text == "Active Plugins"
-                else len([p for p in plugins if not p["enabled"]])
+                else len([p for p in plugins if not p.get("enabled")])
             )
             info = Text()
             info.append(f"{header_text}\n", style="bold #e0af68")
             info.append("Total: ", style="#5F9EA0")
             info.append(f"{count}\n\n", style="white")
             info.append("Controls:\n", style="#5F9EA0")
-            info.append("  j / k   ", style="bold white")
+            info.append(" j / k    ", style="bold white")
             info.append("- Move up / down\n")
-            info.append("  SPACE   ", style="bold white")
+            info.append(" SPACE    ", style="bold white")
             info.append("- Toggle\n")
-            info.append("  q       ", style="bold white")
+            info.append(" q        ", style="bold white")
             info.append("- Quit\n")
             return Panel(
                 info,
@@ -252,7 +205,7 @@ class HomeTab(Tab):
             plugin = selected_item["data"]
             version = (
                 plugin.get("git", {}).get("tag")
-                or plugin.get("git", {}).get("commit_hash", "")[:7]
+                or (plugin.get("git", {}).get("commit_hash") or "")[:7]
                 or "N/A"
             )
             details = Text()
@@ -290,7 +243,6 @@ class HomeTab(Tab):
         return layout
 
 
-# ---------------- INSTALL TAB ----------------
 class InstallTab(Tab):
     def __init__(self):
         super().__init__("Install")
@@ -303,79 +255,107 @@ class InstallTab(Tab):
         )
 
 
-# ---------------- UPDATE TAB ----------------
 class UpdateTab(Tab):
     def __init__(self):
         super().__init__("Update")
 
+    def _get_updates_with_updates(self, app_state):
+        return [
+            p
+            for p in app_state.update_data
+            if p.get("_internal", {}).get("update_available", False)
+        ]
+
     def build_update_list_panel(self, app_state):
         table = Table.grid(expand=True, padding=(0, 1))
         table.add_column("Plugin", ratio=1)
-        any_updates = False
-        for i, plugin in enumerate(mock_updates):
-            is_selected = i == app_state.update_selected
-            mark = "[✓]" if plugin["marked"] else "[ ]"
-            bar_len = 20
-            filled_len = int(plugin["progress"] / 100 * bar_len)
-            bar = (
-                "█" * filled_len + "░" * (bar_len - filled_len)
-                if plugin["progress"] > 0
-                else ""
-            )
-            progress_text = f"{bar} {plugin['progress']}%" if bar else ""
-            row_text = f"● {plugin['name']} {plugin['current_version']} → {plugin['new_version']}    {mark} {progress_text}"
-            style = (
-                f"bold {selection_color}"
-                if is_selected
-                else (
-                    "white"
-                    if plugin["current_version"] != plugin["new_version"]
-                    else "dim white"
-                )
-            )
-            table.add_row(Text(row_text, style=style))
-            if plugin["current_version"] != plugin["new_version"]:
-                any_updates = True
-        if not any_updates:
+
+        updates_with_updates = self._get_updates_with_updates(app_state)
+
+        if app_state.checking_updates:
+            table.add_row(Text("🔄 Checking for updates...", style="bold yellow"))
+        elif not updates_with_updates:
             table.add_row(Text("✓ All plugins are up to date", style="bold #9ece6a"))
+        else:
+            for i, plugin in enumerate(updates_with_updates):
+                is_selected = i == app_state.update_selected
+                marked = plugin.get("marked", False)
+
+                # Mark checkbox
+                mark_text = Text(
+                    "[✓] " if marked else "[ ] ",
+                    style=f"bold {selection_color}" if marked else "dim white",
+                )
+
+                # Plugin name and version
+                version_text = f" → {plugin['new_version']}"
+                name_text = Text(
+                    f"{plugin['name']}{version_text}",
+                    style=f"bold {selection_color}" if is_selected else "white",
+                )
+
+                # Progress bar
+                progress = plugin.get("progress", 0)
+                progress_text_obj = Text()
+                if progress > 0 and progress < 100:
+                    bar_len = 15
+                    filled_len = int(progress / 100 * bar_len)
+                    bar = "█" * filled_len + "░" * (bar_len - filled_len)
+                    progress_text_obj = Text(f" {bar} {progress}%", style="yellow")
+                elif progress == 100:
+                    progress_text_obj = Text(" ✔ Done", style="green")
+
+                row_text_obj = Text.assemble(mark_text, name_text, progress_text_obj)
+                table.add_row(row_text_obj)
+
+        title = f"Available Updates ({len(updates_with_updates)})"
         return Panel(
             table,
-            title=f"Available Updates ({len(mock_updates)})",
+            title=title,
             border_style=accent_color,
             box=ROUNDED,
             style=background_style,
         )
 
     def build_update_details_panel(self, app_state):
-        plugin = mock_updates[app_state.update_selected]
-        details = Text()
-        details.append(f"● {plugin['name']}\n\n", style=f"bold {section_color}")
-        details.append(
-            f"{'Version':<18}: {plugin['current_version']} → {plugin['new_version']}\n",
-            style="white",
-        )
-        details.append(f"{'Size':<18}: {plugin['size']}\n", style="white")
-        details.append(f"{'Released':<18}: {plugin['released']}\n\n", style="white")
-        details.append("What's New:\n", style="#5F9EA0")
-        for line in plugin["changelog"]:
-            details.append(f" • {line}\n", style="white")
-        details.append("\nDependencies:\n", style="#5F9EA0")
-        details.append(
-            " • None\n"
-            if not plugin["dependencies"]
-            else "".join([f" • {d}\n" for d in plugin["dependencies"]])
-        )
-        details.append("\nBreaking Changes:\n", style="#5F9EA0")
-        details.append(
-            " • None\n" if not plugin["breaking"] else "\n".join(plugin["breaking"])
-        )
-        if plugin["progress"] > 0:
-            bar_len = 20
-            filled_len = int(plugin["progress"] / 100 * bar_len)
-            bar = "█" * filled_len + "░" * (bar_len - filled_len)
-            details.append(
-                f"\nUpdating... {bar} {plugin['progress']}%\n", style=highlight_color
+        updates_with_updates = self._get_updates_with_updates(app_state)
+
+        if app_state.checking_updates:
+            details = Text("🔄 Checking for updates...", style="yellow")
+        elif not updates_with_updates or app_state.update_selected >= len(
+            updates_with_updates
+        ):
+            details = Text(
+                "No plugin selected or no update data available.\n\nPress 'c' to check for updates."
             )
+        else:
+            plugin = updates_with_updates[app_state.update_selected]
+            internal_info = plugin.get("_internal", {})
+            details = Text()
+            details.append(f"● {plugin['name']}\n\n", style=f"bold {section_color}")
+            details.append(
+                f"{'Version':<18}: {plugin['current_version']} → {plugin['new_version']}\n",
+                style="white",
+            )
+            details.append(f"{'Size':<18}: {plugin['size']}\n", style="white")
+            details.append(f"{'Released':<18}: {plugin['released']}\n\n", style="white")
+
+            if internal_info.get("update_available", False):
+                details.append("What's New:\n", style="#5F9EA0")
+                for line in plugin["changelog"][:5]:
+                    details.append(f" • {line}\n", style="white")
+            else:
+                details.append("Status: Up to date\n", style=highlight_color)
+
+            progress = plugin.get("progress", 0)
+            if progress > 0:
+                bar_len = 20
+                filled_len = int(progress / 100 * bar_len)
+                bar = "█" * filled_len + "░" * (bar_len - filled_len)
+                details.append(
+                    f"\nUpdating... {bar} {progress}%\n", style=highlight_color
+                )
+
         return Panel(
             details,
             title="Update Details",
@@ -385,12 +365,15 @@ class UpdateTab(Tab):
         )
 
     def build_update_status_panel(self, app_state):
-        controls = Text(
-            "[U] Update All  [u] Update Selected  [Space] Mark/Unmark", style="#5F9EA0"
-        )
+        controls = Text()
+        controls.append("[c] Check Updates ", style="#5F9EA0")
+        controls.append("[Space] Mark/Unmark ", style="#5F9EA0")
+        controls.append(f"[u] Update Marked ", style="#5F9EA0")
+        controls.append(f"[Ctrl+u] Update All", style="#5F9EA0")
+
         return Panel(
             controls,
-            title="Update Status",
+            title="Controls",
             border_style=accent_color,
             box=ROUNDED,
             style=background_style,
@@ -407,107 +390,29 @@ class UpdateTab(Tab):
         return main_layout
 
 
-# ---------------- REMOVE TAB ----------------
-# ---------------- REMOVE TAB (Dynamic Progress) ----------------
-class RemoveTab(Tab):
-    def __init__(self):
-        super().__init__("Remove")
-
-    def build_table_panel(self, app_state):
-        table = Table(expand=True, box=ROUNDED, padding=(0, 1))
-        table.add_column("Plugin", ratio=2)
-        table.add_column("Version", ratio=1)
-        table.add_column("Installed", ratio=1)
-        table.add_column("Marked", ratio=1, justify="center")
-        table.add_column("Progress", ratio=2)
-
-        for i, plugin in enumerate(REMOVE_PLUGINS):
-            is_selected = i == app_state.current_selection
-            style = f"bold {selection_color}" if is_selected else "white"
-            mark = "[✓]" if plugin["name"] in app_state.marked_for_removal else "[ ]"
-            # Dynamic progress bar
-            pct = app_state.removing_progress.get(plugin["name"], 0)
-            bar_len = 6
-            filled = "█" * int(bar_len * pct / 100)
-            empty = "░" * (bar_len - int(bar_len * pct / 100))
-            progress = f"{filled}{empty}"
-            table.add_row(
-                Text(plugin["name"], style=style),
-                Text(plugin["version"], style=style),
-                Text(plugin["installed"], style=style),
-                Text(mark, style=style),
-                Text(progress, style=style),
-            )
-        return Panel(
-            table,
-            title="Installed Plugins",
-            border_style=accent_color,
-            box=ROUNDED,
-            style=background_style,
-        )
-
-    def build_controls_panel(self):
-        controls = Text(
-            "[A] Remove All  [r] Remove Selected  [Space] Mark/Unmark", style="white"
-        )
-        return Panel(
-            controls,
-            title="Controls",
-            border_style=accent_color,
-            box=ROUNDED,
-            style=background_style,
-        )
-
-    def build_panel(self, app_state):
-        table_panel = self.build_table_panel(app_state)
-        controls_panel = self.build_controls_panel()
-        layout = Layout()
-        layout.split_column(
-            Layout(table_panel, ratio=3), Layout(controls_panel, size=3)
-        )
-        return layout
-
-    # -------- Remove Actions (Dynamic) --------
-    def remove_selected(self, app_state, refresh_callback):
-        plugin_name = REMOVE_PLUGINS[app_state.current_selection]["name"]
-        app_state.removing_progress[plugin_name] = 0
-        for pct in range(0, 101, 10):
-            app_state.removing_progress[plugin_name] = pct
-            refresh_callback()
-            time.sleep(0.05)
-        if plugin_name in app_state.marked_for_removal:
-            app_state.marked_for_removal.remove(plugin_name)
-
-    def remove_all(self, app_state, refresh_callback):
-        for plugin in REMOVE_PLUGINS:
-            name = plugin["name"]
-            app_state.removing_progress[name] = 0
-            for pct in range(0, 101, 10):
-                app_state.removing_progress[name] = pct
-                refresh_callback()
-                time.sleep(0.05)
-        app_state.marked_for_removal.clear()
-
-
-# ---------------- TOGGLE PLUGIN ----------------
 def toggle_plugin(app_state):
+    # read the lockfile fresh, toggle selected plugin, write back
     display_list = HomeTab().get_display_list()
     if app_state.current_selection < len(display_list):
         selected_item = display_list[app_state.current_selection]
         if selected_item["type"] == "plugin":
             plugin = selected_item["data"]
-            plugin["enabled"] = not plugin["enabled"]
-            if plugin["enabled"]:
-                plugin_sourcer.activate_plugin(plugin["name"])
-            else:
-                plugin_sourcer.deactivate_plugin(plugin["name"])
-            lfm.write_lock_file(lock_file)
+            name = plugin["name"]
+            lock_data = lfm.read_lock_file()
+            for p in lock_data.get("plugins", []):
+                if p["name"] == name:
+                    p["enabled"] = not p.get("enabled", False)
+                    # persist change
+                    lfm.write_lock_file(lock_data)
+                    # call plugin source activation / deactivation
+                    if p["enabled"]:
+                        plugin_sourcer.activate_plugin(name)
+                    else:
+                        plugin_sourcer.deactivate_plugin(name)
+                    break
 
 
-# ---------------- RICH DISPLAY ----------------
 class RichDisplay(Static):
-    """Widget that renders Rich content directly."""
-
     def __init__(self, app_state: AppState):
         super().__init__()
         self.app_state = app_state
@@ -521,42 +426,37 @@ class RichDisplay(Static):
             layout["body"].update(InstallTab().build())
         elif tab == "Update":
             layout["body"].update(UpdateTab().build_panel(self.app_state))
-        elif tab == "Remove":
-            layout["body"].update(RemoveTab().build_panel(self.app_state))
         layout["tab_bar"].update(Tab("dummy").create_tab_bar(tab))
         return layout
 
 
-# ---------------- PLUGIN MANAGER APP ----------------
 class PluginManagerApp(App):
     CSS = """RichDisplay { background: #1a1b26; width:100%; height:100%; }"""
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("H", "switch_to_home", "Home", show=False),
         Binding("I", "switch_to_install", "Install", show=False),
-        Binding("U", "switch_to_update", "Update", show=False),
-        Binding("R", "switch_to_remove", "Remove", show=False),
+        Binding("U", "switch_to_update", "Updates", show=False),
         Binding("j", "move_down", "Down", show=False),
         Binding("k", "move_up", "Up", show=False),
         Binding("space", "toggle_plugin_or_mark", "Toggle/Mark", show=False),
         Binding("/", "enter_search_mode", "Search", show=False),
-        Binding("esc", "exit_search_mode", "Exit Search", show=False),
-        Binding("U", "update_all", "Update All", show=False),
-        Binding("u", "update_selected", "Update Selected", show=False),
-        Binding("r", "remove_selected", "Remove Selected", show=False),
-        Binding("A", "remove_all", "Remove All", show=False),
+        Binding("escape", "exit_search_mode", "Exit Search", show=False),
+        Binding("c", "check_updates", "Check Updates", show=False),
+        Binding("ctrl+u", "update_all", "Update All", show=False),
+        Binding("u", "update_marked", "Update Marked", show=False),
     ]
 
     def __init__(self):
         super().__init__()
         self.app_state = AppState()
+        self.app_state.bind_app(self)
         self.rich_display = None
 
     def compose(self) -> ComposeResult:
         self.rich_display = RichDisplay(self.app_state)
         yield self.rich_display
 
-    # -------- Tab Switching --------
     def action_switch_to_home(self):
         self.app_state.current_tab = "Home"
         self.rich_display.refresh()
@@ -567,13 +467,10 @@ class PluginManagerApp(App):
 
     def action_switch_to_update(self):
         self.app_state.current_tab = "Update"
+        if not self.app_state.update_data:
+            self.app_state.refresh_updates()
         self.rich_display.refresh()
 
-    def action_switch_to_remove(self):
-        self.app_state.current_tab = "Remove"
-        self.rich_display.refresh()
-
-    # -------- Navigation --------
     def action_move_down(self):
         if self.app_state.current_tab == "Home" and self.app_state.mode == "normal":
             display_list = HomeTab().get_display_list()
@@ -581,11 +478,12 @@ class PluginManagerApp(App):
                 self.app_state.current_selection += 1
                 self._update_scroll_offset(display_list)
         elif self.app_state.current_tab == "Update":
-            if self.app_state.update_selected < len(mock_updates) - 1:
+            updates_with_updates = UpdateTab()._get_updates_with_updates(self.app_state)
+            if (
+                updates_with_updates
+                and self.app_state.update_selected < len(updates_with_updates) - 1
+            ):
                 self.app_state.update_selected += 1
-        elif self.app_state.current_tab == "Remove":
-            if self.app_state.current_selection < len(REMOVE_PLUGINS) - 1:
-                self.app_state.current_selection += 1
         self.rich_display.refresh()
 
     def action_move_up(self):
@@ -596,59 +494,103 @@ class PluginManagerApp(App):
         elif self.app_state.current_tab == "Update":
             if self.app_state.update_selected > 0:
                 self.app_state.update_selected -= 1
-        elif self.app_state.current_tab == "Remove":
-            if self.app_state.current_selection > 0:
-                self.app_state.current_selection -= 1
         self.rich_display.refresh()
 
-    # -------- Toggle / Mark --------
     def action_toggle_plugin_or_mark(self):
         if self.app_state.current_tab == "Home":
             toggle_plugin(self.app_state)
         elif self.app_state.current_tab == "Update":
-            plugin = mock_updates[self.app_state.update_selected]
-            plugin["marked"] = not plugin["marked"]
-        elif self.app_state.current_tab == "Remove":
-            plugin = REMOVE_PLUGINS[self.app_state.current_selection]["name"]
-            if plugin in self.app_state.marked_for_removal:
-                self.app_state.marked_for_removal.remove(plugin)
-            else:
-                self.app_state.marked_for_removal.add(plugin)
+            updates_with_updates = UpdateTab()._get_updates_with_updates(self.app_state)
+            if updates_with_updates and 0 <= self.app_state.update_selected < len(
+                updates_with_updates
+            ):
+                plugin = updates_with_updates[self.app_state.update_selected]
+                plugin["marked"] = not plugin.get("marked", False)
         self.rich_display.refresh()
 
-    # -------- Update Actions --------
-    def action_update_all(self):
-        for plugin in mock_updates:
-            plugin["progress"] = 100
-        self.rich_display.refresh()
-
-    def action_update_selected(self):
-        plugin = mock_updates[self.app_state.update_selected]
-        plugin["progress"] = 100
-        self.rich_display.refresh()
-
-    # -------- Remove Actions --------
-    def action_remove_selected(self):
-        name = REMOVE_PLUGINS[self.app_state.current_selection]["name"]
-        self.app_state.removing_progress[name] = 0
-        for i in range(0, 101, 10):
-            self.app_state.removing_progress[name] = i
+    def action_check_updates(self):
+        if self.app_state.current_tab == "Update":
+            if not self.app_state.checking_updates:
+                self.app_state.refresh_updates()
             self.rich_display.refresh()
-            time.sleep(0.05)
-        if name in self.app_state.marked_for_removal:
-            self.app_state.marked_for_removal.remove(name)
 
-    def action_remove_all(self):
-        for plugin in REMOVE_PLUGINS:
-            name = plugin["name"]
-            self.app_state.removing_progress[name] = 0
-            for i in range(0, 101, 10):
-                self.app_state.removing_progress[name] = i
-                self.rich_display.refresh()
-                time.sleep(0.05)
-        self.app_state.marked_for_removal.clear()
+    @work(exclusive=True, thread=True)
+    def update_plugins_in_background(self, plugins_to_update):
+        """Worker to update plugins and report progress."""
+        try:
+            # Update plugins synchronously to avoid race conditions
+            for plugin in plugins_to_update:
+                plugin_name = plugin["name"]
+                console.log(f"Starting update for {plugin_name}")
 
-    # -------- Scroll offset --------
+                # Update using the plugin updater
+                success = plugin_updater.update_plugin(
+                    plugin, progress_callback=self.app_state.update_progress_callback
+                )
+
+                if success:
+                    console.log(f"Successfully updated {plugin_name}")
+                    # Mark as no longer needing update
+                    plugin["_internal"]["update_available"] = False
+                    plugin["current_version"] = plugin["new_version"]
+                else:
+                    console.log(f"Failed to update {plugin_name}")
+                    # Reset progress on failure
+                    self.app_state.update_progress_callback(plugin_name, 0)
+
+            # Final UI refresh
+            self.call_from_thread(self.rich_display.refresh)
+
+        except Exception as e:
+            console.log(f"Error in background update: {e}")
+            self.call_from_thread(
+                lambda: self.notify(f"Update failed: {str(e)}", severity="error")
+            )
+
+    def action_update_marked(self):
+        """Updates all marked plugins."""
+        if self.app_state.current_tab == "Update":
+            marked_plugins = [
+                p
+                for p in self.app_state.update_data
+                if p.get("marked", False)
+                and p.get("_internal", {}).get("update_available", False)
+            ]
+
+            if marked_plugins:
+                # Reset progress for marked plugins
+                for plugin in marked_plugins:
+                    plugin["progress"] = 0
+                    self.app_state.update_progress[plugin["name"]] = 0
+
+                # Start background update
+                self.update_plugins_in_background(marked_plugins)
+                self.notify(f"Updating {len(marked_plugins)} marked plugin(s)...")
+            else:
+                self.notify("No plugins marked for update.")
+
+            self.rich_display.refresh()
+
+    def action_update_all(self):
+        """Updates all plugins with available updates."""
+        if self.app_state.current_tab == "Update":
+            updates_with_updates = UpdateTab()._get_updates_with_updates(self.app_state)
+
+            if updates_with_updates:
+                # Reset progress for all plugins
+                for plugin in updates_with_updates:
+                    plugin["progress"] = 0
+                    self.app_state.update_progress[plugin["name"]] = 0
+                    plugin["marked"] = True  # Mark all for visual feedback
+
+                # Start background update
+                self.update_plugins_in_background(updates_with_updates)
+                self.notify(f"Updating all {len(updates_with_updates)} plugin(s)...")
+            else:
+                self.notify("No updates available.")
+
+            self.rich_display.refresh()
+
     def _update_scroll_offset(self, display_list):
         if (
             self.app_state.current_selection
@@ -661,7 +603,6 @@ class PluginManagerApp(App):
             self.app_state.scroll_offset = self.app_state.current_selection
 
 
-# ---------------- MAIN ----------------
 def main():
     app = PluginManagerApp()
     app.run()

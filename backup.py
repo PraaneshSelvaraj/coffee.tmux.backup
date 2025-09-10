@@ -431,18 +431,6 @@ class UpdateTab(Tab):
         return main_layout
 
 
-class RemoveTab(Tab):
-    def __init__(self):
-        super().__init__("Remove")
-
-    def build(self):
-        return Panel(
-            Text("Remove tab coming soon..."),
-            border_style="magenta",
-            style=background_style,
-        )
-
-
 # ---------------- TOGGLE PLUGIN ----------------
 def toggle_plugin(app_state):
     display_list = HomeTab().get_display_list()

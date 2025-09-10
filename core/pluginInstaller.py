@@ -99,6 +99,7 @@ class PluginInstaller:
             "env": plugin.get("env", {}),
             "skip_auto_update": plugin.get("skip_auto_update", False),
             "git": {
+                "repo": plugin["url"],
                 "tag": used_tag,
                 "commit_hash": self._get_commit_hash(plugin),
                 "last_pull": self._get_current_timestamp(),
