@@ -33,36 +33,147 @@ TABS = ["Home", "Install", "Update", "Remove"]
 PLUGINS_DIR = os.path.expanduser("~/.tmux/coffee/plugins")
 plugin_updater = PluginUpdater(PLUGINS_DIR)
 
-REMOVE_PLUGINS = [
-    {
-        "name": "tmux-powerline",
-        "version": "v4.1.0",
-        "size": "2.3 MB",
-        "installed": "3 days ago",
-        "dependencies": "None",
-    },
-    {
-        "name": "tmux-resurrect",
-        "version": "v4.1.0",
-        "size": "1.8 MB",
-        "installed": "5 days ago",
-        "dependencies": "None",
-    },
-    {
-        "name": "battery-status",
-        "version": "v1.6.0",
-        "size": "0.5 MB",
-        "installed": "2 days ago",
-        "dependencies": "None",
-    },
-    {
-        "name": "weather-plugin",
-        "version": "v0.4.0",
-        "size": "1.2 MB",
-        "installed": "7 days ago",
-        "dependencies": "None",
-    },
-]
+# Add PluginRemover import and initialization
+import shutil
+import subprocess
+
+
+class PluginRemover:
+    def __init__(self, plugin_base_dir):
+        self.plugin_base_dir = plugin_base_dir
+
+    def get_installed_plugins(self):
+        """Get list of installed plugins with details"""
+        lock_data = lfm.read_lock_file()
+        plugins = lock_data.get("plugins", [])
+        installed_plugins = []
+
+        for plugin in plugins:
+            plugin_name = plugin.get("name", "")
+            plugin_path = os.path.join(self.plugin_base_dir, plugin_name)
+
+            # Get plugin size
+            size = "Unknown"
+            if os.path.exists(plugin_path):
+                try:
+                    result = subprocess.run(
+                        ["du", "-sh", plugin_path],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        size = result.stdout.strip().split()[0]
+                except Exception:
+                    pass
+
+            # Get version info
+            git_info = plugin.get("git", {})
+            version = git_info.get("tag") or (
+                git_info.get("commit_hash", "")[:7]
+                if git_info.get("commit_hash")
+                else "N/A"
+            )
+
+            # Get install time (use last_pull or fallback to "Unknown")
+            installed_time = git_info.get("last_pull", "Unknown")
+            if installed_time != "Unknown":
+                try:
+                    from datetime import datetime
+
+                    dt = datetime.fromisoformat(installed_time.replace("Z", "+00:00"))
+                    installed_time = dt.strftime("%Y-%m-%d")
+                except:
+                    installed_time = "Unknown"
+
+            installed_plugins.append(
+                {
+                    "name": plugin_name,
+                    "version": version,
+                    "size": size,
+                    "installed": installed_time,
+                    "dependencies": "None",  # You might want to implement dependency checking
+                    "enabled": plugin.get("enabled", False),
+                    "env": plugin.get("env", {}),
+                }
+            )
+
+        return installed_plugins
+
+    def remove_plugin(self, plugin_name, progress_callback=None):
+        """Remove a plugin with progress reporting"""
+
+        def send_progress(progress):
+            if progress_callback:
+                progress_callback(plugin_name, progress)
+
+        try:
+            send_progress(10)
+            console.log(f"[blue]Removing {plugin_name}...[/blue]")
+
+            # Step 1: Read lock file and find plugin
+            lock_data = lfm.read_lock_file()
+            plugins = lock_data.get("plugins", [])
+            plugin_entry = next(
+                (p for p in plugins if p.get("name") == plugin_name), None
+            )
+
+            if not plugin_entry:
+                console.log(
+                    f"[yellow]Plugin '{plugin_name}' not found in lock file.[/yellow]"
+                )
+                send_progress(0)
+                return False
+
+            send_progress(30)
+
+            # Step 2: Remove plugin directory
+            plugin_path = os.path.join(self.plugin_base_dir, plugin_name)
+            if os.path.exists(plugin_path):
+                try:
+                    shutil.rmtree(plugin_path)
+                    console.log(
+                        f"[green]Removed plugin directory: {plugin_path}[/green]"
+                    )
+                except Exception as e:
+                    console.log(
+                        f"[red]Error removing plugin directory: {plugin_path} - {e}[/red]"
+                    )
+                    send_progress(0)
+                    return False
+
+            send_progress(60)
+
+            # Step 3: Unset environment variables
+            env_vars = plugin_entry.get("env", {})
+            for key in env_vars.keys():
+                try:
+                    subprocess.run(["tmux", "set-environment", "-u", key], check=True)
+                    console.log(f"[blue]Unset env var: {key}[/blue]")
+                except Exception as e:
+                    console.log(
+                        f"[yellow]Warning: Failed to unset env var {key}: {e}[/yellow]"
+                    )
+
+            send_progress(80)
+
+            # Step 4: Remove plugin entry from lock file
+            lock_data["plugins"] = [p for p in plugins if p.get("name") != plugin_name]
+            lfm.write_lock_file(lock_data)
+
+            send_progress(100)
+            console.log(
+                f"[green]Plugin '{plugin_name}' has been removed successfully.[/green]"
+            )
+            return True
+
+        except Exception as e:
+            console.log(f"[red]Unexpected error removing {plugin_name}: {e}[/red]")
+            send_progress(0)
+            return False
+
+
+plugin_remover = PluginRemover(PLUGINS_DIR)
 
 
 class AppState:
@@ -79,6 +190,7 @@ class AppState:
         self.remove_selected = 0
         self.marked_for_removal = set()
         self.removing_progress = {}
+        self.remove_data = []  # Store actual plugin data instead of mock data
         self._app_ref = None
 
     def refresh_updates(self):
@@ -88,6 +200,10 @@ class AppState:
             self.update_progress = {}  # Reset progress
             thread = threading.Thread(target=self._check_updates_async, daemon=True)
             thread.start()
+
+    def refresh_remove_data(self):
+        """Refresh the list of installed plugins for removal tab"""
+        self.remove_data = plugin_remover.get_installed_plugins()
 
     def _check_updates_async(self):
         try:
@@ -111,6 +227,12 @@ class AppState:
         if self._app_ref:
             self._app_ref.call_from_thread(self._app_ref.rich_display.refresh)
 
+    def remove_progress_callback(self, plugin_name, progress):
+        """Progress callback for plugin removal"""
+        self.removing_progress[plugin_name] = progress
+        if self._app_ref:
+            self._app_ref.call_from_thread(self._app_ref.rich_display.refresh)
+
     def bind_app(self, app):
         self._app_ref = app
 
@@ -124,7 +246,7 @@ class Tab:
         for tab in TABS:
             if tab == active_tab:
                 # highlight active tab
-                tabs += f"[reverse bold {highlight_color}] {tab} [/] {' ' }"
+                tabs += f"[reverse bold #1D8E5E bold white] {tab} [/] {' ' }"
             else:
                 tabs += f"[bold white] {tab} [/]{' '}"
         return Panel(
@@ -433,10 +555,10 @@ class RemoveTab(Tab):
         table = Table.grid(expand=True, padding=(0, 1))
         table.add_column("Plugin", ratio=1)
 
-        if not REMOVE_PLUGINS:
+        if not app_state.remove_data:
             table.add_row(Text("No plugins installed", style="bold #9ece6a"))
         else:
-            for i, plugin in enumerate(REMOVE_PLUGINS):
+            for i, plugin in enumerate(app_state.remove_data):
                 is_selected = i == app_state.remove_selected
                 marked = plugin["name"] in app_state.marked_for_removal
 
@@ -447,7 +569,9 @@ class RemoveTab(Tab):
                 )
 
                 # Plugin name and version
-                version_text = f" (v{plugin['version']})"
+                version_text = (
+                    f" ({plugin['version']})" if plugin["version"] != "N/A" else ""
+                )
                 name_text = Text(
                     f"{plugin['name']}{version_text}",
                     style=f"bold {selection_color}" if is_selected else "white",
@@ -467,7 +591,7 @@ class RemoveTab(Tab):
                 row_text_obj = Text.assemble(mark_text, name_text, progress_text_obj)
                 table.add_row(row_text_obj)
 
-        title = f"Installed Plugins ({len(REMOVE_PLUGINS)})"
+        title = f"Installed Plugins ({len(app_state.remove_data)})"
         return Panel(
             table,
             title=title,
@@ -477,20 +601,32 @@ class RemoveTab(Tab):
         )
 
     def build_remove_details_panel(self, app_state):
-        if not REMOVE_PLUGINS or app_state.remove_selected >= len(REMOVE_PLUGINS):
+        if not app_state.remove_data or app_state.remove_selected >= len(
+            app_state.remove_data
+        ):
             details = Text(
-                "No plugin selected or no plugins installed.\n\nPress 'j/k' to navigate through plugins."
+                "No plugin selected or no plugins installed.\n\nPress 'R' to refresh the plugin list."
             )
         else:
-            plugin = REMOVE_PLUGINS[app_state.remove_selected]
+            plugin = app_state.remove_data[app_state.remove_selected]
             details = Text()
             details.append(f"● {plugin['name']}\n\n", style=f"bold {section_color}")
             details.append(f"{'Version':<18}: {plugin['version']}\n", style="white")
             details.append(f"{'Size':<18}: {plugin['size']}\n", style="white")
             details.append(f"{'Installed':<18}: {plugin['installed']}\n", style="white")
             details.append(
-                f"{'Dependencies':<18}: {plugin['dependencies']}\n\n", style="white"
+                f"{'Dependencies':<18}: {plugin['dependencies']}\n", style="white"
             )
+            details.append(
+                f"{'Status':<18}: {'Enabled' if plugin['enabled'] else 'Disabled'}\n",
+                style="white",
+            )
+            if plugin.get("env"):
+                details.append(
+                    f"{'Env Variables':<18}: {len(plugin['env'])}\n\n", style="white"
+                )
+            else:
+                details.append("\n")
 
             # Show removal status
             progress = app_state.removing_progress.get(plugin["name"], 0)
@@ -504,7 +640,7 @@ class RemoveTab(Tab):
             elif plugin["name"] in app_state.marked_for_removal:
                 details.append("Status: Marked for removal\n", style="yellow")
             else:
-                details.append("Status: Installed\n", style=highlight_color)
+                details.append("Status: Available for removal\n", style=highlight_color)
 
         return Panel(
             details,
@@ -517,8 +653,7 @@ class RemoveTab(Tab):
     def build_remove_controls_panel(self, app_state):
         controls = Text()
         controls.append("[Space] Mark/Unmark ", style="#5F9EA0")
-        controls.append("[r] Remove Selected ", style="#5F9EA0")
-        controls.append(f"[A] Remove All Marked ", style="#5F9EA0")
+        controls.append("[r] Remove Marked ", style="#5F9EA0")
 
         # Show count of marked plugins
         marked_count = len(app_state.marked_for_removal)
@@ -542,31 +677,6 @@ class RemoveTab(Tab):
         main_layout = Layout()
         main_layout.split_column(Layout(layout, ratio=3), Layout(bottom, size=3))
         return main_layout
-
-    # -------- Remove Actions (Dynamic) --------
-    def remove_selected(self, app_state, refresh_callback):
-        # Use the current selected index from app_state to find plugin
-        if app_state.remove_selected >= len(REMOVE_PLUGINS):
-            return
-        plugin_name = REMOVE_PLUGINS[app_state.remove_selected]["name"]
-        app_state.removing_progress[plugin_name] = 0
-        for pct in range(0, 101, 10):
-            app_state.removing_progress[plugin_name] = pct
-            refresh_callback()
-            time.sleep(0.05)
-        # Remove from marked list after completion
-        if plugin_name in app_state.marked_for_removal:
-            app_state.marked_for_removal.remove(plugin_name)
-
-    def remove_all_marked(self, app_state, refresh_callback):
-        marked_plugins = list(app_state.marked_for_removal)  # Create a copy
-        for plugin_name in marked_plugins:
-            app_state.removing_progress[plugin_name] = 0
-            for pct in range(0, 101, 10):
-                app_state.removing_progress[plugin_name] = pct
-                refresh_callback()
-                time.sleep(0.02)  # Faster for multiple plugins
-        app_state.marked_for_removal.clear()
 
 
 def toggle_plugin(app_state):
@@ -627,8 +737,8 @@ class PluginManagerApp(App):
         Binding("c", "check_updates", "Check Updates", show=False),
         Binding("ctrl+u", "update_all", "Update All", show=False),
         Binding("u", "update_marked", "Update Marked", show=False),
-        Binding("r", "remove_selected", "Remove Selected", show=False),
-        Binding("A", "remove_all_marked", "Remove All Marked", show=False),
+        Binding("r", "remove_marked", "Remove Marked", show=False),
+        Binding("ctrl+r", "refresh_remove_list", "Refresh Remove List", show=False),
     ]
 
     def __init__(self):
@@ -657,6 +767,18 @@ class PluginManagerApp(App):
 
     def action_switch_to_remove(self):
         self.app_state.current_tab = "Remove"
+        # Refresh remove data when switching to remove tab
+        if not self.app_state.remove_data:
+            self.app_state.refresh_remove_data()
+        self.rich_display.refresh()
+
+    def action_refresh_remove_list(self):
+        """Refresh the list of installed plugins in remove tab"""
+        if self.app_state.current_tab == "Remove":
+            self.app_state.refresh_remove_data()
+            self.app_state.remove_selected = 0  # Reset selection
+            self.app_state.marked_for_removal.clear()  # Clear marked plugins
+            self.notify("Plugin list refreshed")
         self.rich_display.refresh()
 
     def action_move_down(self):
@@ -673,7 +795,7 @@ class PluginManagerApp(App):
             ):
                 self.app_state.update_selected += 1
         elif self.app_state.current_tab == "Remove":
-            if self.app_state.remove_selected < len(REMOVE_PLUGINS) - 1:
+            if self.app_state.remove_selected < len(self.app_state.remove_data) - 1:
                 self.app_state.remove_selected += 1
         self.rich_display.refresh()
 
@@ -701,8 +823,10 @@ class PluginManagerApp(App):
                 plugin = updates_with_updates[self.app_state.update_selected]
                 plugin["marked"] = not plugin.get("marked", False)
         elif self.app_state.current_tab == "Remove":
-            if 0 <= self.app_state.remove_selected < len(REMOVE_PLUGINS):
-                plugin_name = REMOVE_PLUGINS[self.app_state.remove_selected]["name"]
+            if 0 <= self.app_state.remove_selected < len(self.app_state.remove_data):
+                plugin_name = self.app_state.remove_data[
+                    self.app_state.remove_selected
+                ]["name"]
                 if plugin_name in self.app_state.marked_for_removal:
                     self.app_state.marked_for_removal.remove(plugin_name)
                 else:
@@ -803,54 +927,86 @@ class PluginManagerApp(App):
         elif self.app_state.current_selection < self.app_state.scroll_offset:
             self.app_state.scroll_offset = self.app_state.current_selection
 
-    def action_remove_selected(self):
-        """Trigger removal of the currently selected plugin in the Remove tab."""
-        if self.app_state.current_tab == "Remove":
-            if 0 <= self.app_state.remove_selected < len(REMOVE_PLUGINS):
-                self.remove_selected_worker()
-                pname = REMOVE_PLUGINS[self.app_state.remove_selected]["name"]
-                self.notify(f"Removing {pname}...")
-            else:
-                self.notify("No plugin selected to remove.")
-
-    @work(thread=True)
-    def remove_selected_worker(self):
+    @work(exclusive=True, thread=True)
+    def remove_plugins_in_background(self, plugins_to_remove):
+        """Worker to remove plugins and report progress."""
         try:
-            RemoveTab().remove_selected(
-                self.app_state, lambda: self.call_from_thread(self.rich_display.refresh)
+            console.log(
+                f"[blue]Background removal started for plugins: {plugins_to_remove}[/blue]"
             )
+            removed_plugins = []
+
+            for plugin_name in plugins_to_remove:
+                console.log(f"[blue]Starting removal for {plugin_name}[/blue]")
+
+                # Remove using the plugin remover
+                success = plugin_remover.remove_plugin(
+                    plugin_name,
+                    progress_callback=self.app_state.remove_progress_callback,
+                )
+
+                if success:
+                    console.log(f"[green]Successfully removed {plugin_name}[/green]")
+                    removed_plugins.append(plugin_name)
+                else:
+                    console.log(f"[red]Failed to remove {plugin_name}[/red]")
+                    # Reset progress on failure
+                    self.app_state.remove_progress_callback(plugin_name, 0)
+                    self.call_from_thread(
+                        lambda: self.notify(
+                            f"Failed to remove {plugin_name}", severity="error"
+                        )
+                    )
+
+            # Refresh the remove data after successful removals
+            if removed_plugins:
+                console.log(
+                    f"[green]Refreshing remove data after successful removals: {removed_plugins}[/green]"
+                )
+                self.call_from_thread(self.app_state.refresh_remove_data)
+
+                # Clear marked plugins that were successfully removed
+                for plugin_name in removed_plugins:
+                    self.app_state.marked_for_removal.discard(plugin_name)
+
+                # Reset selection if we removed the currently selected plugin
+                if (
+                    self.app_state.remove_selected >= len(self.app_state.remove_data)
+                    and len(self.app_state.remove_data) > 0
+                ):
+                    self.app_state.remove_selected = len(self.app_state.remove_data) - 1
+                elif len(self.app_state.remove_data) == 0:
+                    self.app_state.remove_selected = 0
+
+            # Final UI refresh
             self.call_from_thread(self.rich_display.refresh)
-            self.call_from_thread(lambda: self.notify("Removal complete."))
+            console.log("[blue]Background removal worker completed[/blue]")
+
         except Exception as e:
-            console.log(f"Error removing selected plugin: {e}")
+            console.log(f"[red]Error in background removal: {e}[/red]")
+            import traceback
+
+            console.log(f"[red]Traceback: {traceback.format_exc()}[/red]")
             self.call_from_thread(
-                lambda: self.notify(f"Removal failed: {e}", severity="error")
+                lambda: self.notify(f"Removal failed: {str(e)}", severity="error")
             )
 
-    def action_remove_all_marked(self):
-        """Trigger removal of all plugins marked for removal."""
+    def action_remove_marked(self):
+        """Remove all plugins marked for removal."""
         if self.app_state.current_tab == "Remove":
             if self.app_state.marked_for_removal:
-                self.remove_all_marked_worker()
-                self.notify(
-                    f"Removing {len(self.app_state.marked_for_removal)} plugin(s)..."
-                )
-            else:
-                self.notify("No plugins marked for removal.")
+                marked_plugins = list(self.app_state.marked_for_removal)
+                # Reset progress for marked plugins
+                for plugin_name in marked_plugins:
+                    self.app_state.removing_progress[plugin_name] = 0
 
-    @work(thread=True)
-    def remove_all_marked_worker(self):
-        try:
-            RemoveTab().remove_all_marked(
-                self.app_state, lambda: self.call_from_thread(self.rich_display.refresh)
-            )
-            self.call_from_thread(self.rich_display.refresh)
-            self.call_from_thread(lambda: self.notify("All removals complete."))
-        except Exception as e:
-            console.log(f"Error removing all marked plugins: {e}")
-            self.call_from_thread(
-                lambda: self.notify(f"Removal failed: {e}", severity="error")
-            )
+                self.remove_plugins_in_background(marked_plugins)
+                self.notify(f"Removing {len(marked_plugins)} marked plugin(s)...")
+            else:
+                self.notify(
+                    "No plugins marked for removal. Use Space to mark plugins first."
+                )
+        self.rich_display.refresh()
 
 
 def main():
