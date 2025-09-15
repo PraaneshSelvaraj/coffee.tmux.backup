@@ -32,11 +32,15 @@ class PluginSourcer:
 
     def _run_plugin_script(self, script_path, env_vars=None):
         try:
-            for key, value in env_vars.items():
-                subprocess.run(["tmux", "set-environment", key, value])
+            if env_vars:
+                for key, value in env_vars.items():
+                    subprocess.run(
+                        ["tmux", "set-environment", "-g", key, value], check=True
+                    )
 
-            subprocess.run(["tmux", "run-shell", script_path], check=True)
-            print(f"✅ Ran script: {script_path}")
+            subprocess.run(["tmux", "run-shell", f"{script_path}"], check=True)
+
+            print(f"✅ Ran script: {script_path} with env vars")
         except subprocess.CalledProcessError as e:
             print(f"💣 Error running script {script_path}: {e}")
 
