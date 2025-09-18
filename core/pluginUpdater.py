@@ -3,9 +3,6 @@ import subprocess
 import threading
 from datetime import datetime, timezone
 from core import lock_file_manager as lfm
-from rich.console import Console
-
-console = Console()
 
 
 class PluginUpdater:
@@ -18,10 +15,8 @@ class PluginUpdater:
         try:
             return subprocess.check_output(cmd, cwd=cwd, text=True).strip()
         except subprocess.CalledProcessError as e:
-            console.log(f"[red]Git command failed:[/red] {' '.join(cmd)} -> {e}")
             return default
         except FileNotFoundError:
-            console.log("[red]Git not found on PATH[/red]")
             return default
 
     def _get_local_head_commit(self, plugin_path, short=False):
@@ -71,7 +66,6 @@ class PluginUpdater:
             )
 
             if result.returncode != 0:
-                console.log(f"[yellow]Failed to fetch tags for {repo_url}[/yellow]")
                 return []
 
             tags = []
@@ -88,7 +82,6 @@ class PluginUpdater:
             return sorted(set(tags), reverse=True)
 
         except Exception as e:
-            console.log(f"[red]Failed to fetch remote tags for {repo_url}:[/red] {e}")
             return []
 
     def _get_latest_commit(self, repo_url, branch="HEAD"):
@@ -103,7 +96,7 @@ class PluginUpdater:
             if result.returncode == 0 and result.stdout:
                 return result.stdout.split()[0]
         except Exception as e:
-            console.log(f"[red]Failed to fetch latest commit for {repo_url}:[/red] {e}")
+            print(f"[red]Failed to fetch latest commit for {repo_url}:[/red] {e}")
         return None
 
     def _get_tag_commit_hash(self, repo_url, tag):
@@ -118,7 +111,7 @@ class PluginUpdater:
             if result.returncode == 0 and result.stdout:
                 return result.stdout.split()[0]
         except Exception as e:
-            console.log(f"[red]Failed to fetch commit hash for tag {tag}:[/red] {e}")
+            print(f"[red]Failed to fetch commit hash for tag {tag}:[/red] {e}")
         return None
 
     def _write_lockfile_update(self, name, new_tag=None, new_commit=None):
@@ -137,7 +130,7 @@ class PluginUpdater:
             lfm.write_lock_file(lock_data)
             return True
         except Exception as e:
-            console.log(f"[red]Failed to update lockfile for {name}:[/red] {e}")
+            print(f"[red]Failed to update lockfile for {name}:[/red] {e}")
             return False
 
     def check_for_updates(self):
@@ -178,11 +171,6 @@ class PluginUpdater:
             update_type = "commit"
 
             if current_tag:
-                # TAG-BASED PLUGIN: Check for newer tags
-                console.log(
-                    f"[blue]Checking tag-based plugin: {name} (current: {current_tag})[/blue]"
-                )
-
                 remote_tags = self._get_remote_tags(repo_url)
                 if remote_tags:
                     latest_tag = remote_tags[0]  # First tag after sorting
@@ -202,10 +190,6 @@ class PluginUpdater:
                     new_tag = current_tag
                     new_commit = current_commit
             else:
-                # COMMIT-BASED PLUGIN: Check for newer commits
-                console.log(
-                    f"[blue]Checking commit-based plugin: {name} (current: {current_commit[:7] if current_commit else 'unknown'})[/blue]"
-                )
 
                 latest_commit = self._get_latest_commit(repo_url)
                 if latest_commit:
@@ -259,7 +243,6 @@ class PluginUpdater:
         repo_url = internal["repo_url"]
 
         if not internal.get("update_available", False):
-            console.log(f"[yellow]No update available for {name}[/yellow]")
             return False
 
         def send_progress(progress):
@@ -268,12 +251,10 @@ class PluginUpdater:
 
         try:
             send_progress(10)
-            console.log(f"[blue]Updating {name}...[/blue]")
 
             if internal["type"] == "tag":
                 # TAG-BASED UPDATE
                 tag = internal["new_tag"]
-                console.log(f"[blue]Fetching tag {tag} for {name}[/blue]")
 
                 # Fetch the specific tag
                 result = subprocess.run(
@@ -302,7 +283,6 @@ class PluginUpdater:
             else:
                 # COMMIT-BASED UPDATE
                 commit = internal["new_commit"]
-                console.log(f"[blue]Fetching commit {commit[:7]} for {name}[/blue]")
 
                 # Fetch the specific commit
                 subprocess.run(
@@ -337,20 +317,16 @@ class PluginUpdater:
 
             if success:
                 send_progress(100)
-                console.log(f"[green]✓ Updated {name} successfully[/green]")
                 return True
             else:
-                console.log(f"[red]✗ Failed to update lockfile for {name}[/red]")
                 return False
 
         except subprocess.CalledProcessError as e:
-            console.log(f"[red]✗ Update failed for {name}:[/red] {e}")
             if hasattr(e, "stderr") and e.stderr:
-                console.log(f"[red]Error details:[/red] {e.stderr}")
+                print(f"[red]Error details:[/red] {e.stderr}")
             send_progress(0)
             return False
         except Exception as e:
-            console.log(f"[red]✗ Unexpected error updating {name}:[/red] {e}")
             send_progress(0)
             return False
 
@@ -365,7 +341,6 @@ class PluginUpdater:
                 if not success and progress_callback:
                     progress_callback(name, 0)
             except Exception as e:
-                console.log(f"[red]Async update failed for {name}:[/red] {e}")
                 if progress_callback:
                     progress_callback(name, 0)
             finally:
@@ -397,7 +372,6 @@ class PluginUpdater:
 
     def auto_update_all(self):
         """Automatically update all plugins that have updates available"""
-        console.log("[blue]Checking for plugin updates...[/blue]")
         updates = self.check_for_updates()
         lock_data = lfm.read_lock_file()
 
@@ -406,12 +380,7 @@ class PluginUpdater:
         ]
 
         if not available_updates:
-            console.log("[green]🎉 All plugins are up-to-date![/green]")
             return
-
-        console.log(
-            f"[blue]Found {len(available_updates)} plugin(s) with updates[/blue]"
-        )
 
         for update in available_updates:
             name = update["name"]
@@ -420,20 +389,14 @@ class PluginUpdater:
             )
 
             if plugin_info and plugin_info.get("skip_auto_update", False):
-                console.log(
-                    f"[yellow]⏭️ Skipping auto-update for {name} (skip_auto_update = true)[/yellow]"
-                )
                 continue
 
-            console.log(
-                f"[blue]⬆️ Auto-updating {name}: {update['current_version']} → {update['new_version']}[/blue]"
-            )
             success = self.update_plugin(update)
 
             if success:
-                console.log(f"[green]✓ {name} updated successfully[/green]")
+                print(f"{name} updated successfully")
             else:
-                console.log(f"[red]✗ Failed to update {name}[/red]")
+                print(f"Failed to update {name}")
 
     def get_update_status(self, plugin_name):
         """Get the current update status of a specific plugin"""
@@ -443,8 +406,5 @@ class PluginUpdater:
         """Cancel an ongoing update (if possible)"""
         thread = self._update_threads.get(plugin_name)
         if thread and thread.is_alive():
-            console.log(
-                f"[yellow]Cannot cancel ongoing update for {plugin_name} (thread already running)[/yellow]"
-            )
             return False
         return True

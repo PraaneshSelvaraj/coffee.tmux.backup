@@ -15,6 +15,8 @@ from core import lock_file_manager as lfm
 from core import PluginSourcer
 from core import PluginUpdater
 from core import PluginRemover
+from core import PluginLoader
+from core import PluginInstaller
 
 console = Console()
 plugin_sourcer = PluginSourcer()
@@ -31,6 +33,10 @@ VISIBLE_ROWS = 10
 TABS = ["Home", "Install", "Update", "Remove"]
 
 PLUGINS_DIR = os.path.expanduser("~/.tmux/coffee/plugins")
+COFFEE_PLUGINS_LIST_DIR = os.path.join(
+    os.path.expanduser("~/.config/tmux/"), "coffee/plugins"
+)
+
 plugin_updater = PluginUpdater(PLUGINS_DIR)
 plugin_remover = PluginRemover(PLUGINS_DIR)
 
@@ -50,6 +56,9 @@ class AppState:
         self.removing_progress = {}
         self.remove_data = []
         self._app_ref = None
+        self.install_selected = 0
+        self.install_data = []
+        self.installing_progress = {}
 
     def refresh_updates(self):
         if not self.checking_updates:
@@ -88,6 +97,17 @@ class AppState:
     def remove_progress_callback(self, plugin_name, progress):
         """Progress callback for plugin removal"""
         self.removing_progress[plugin_name] = progress
+        if self._app_ref:
+            self._app_ref.call_from_thread(self._app_ref.rich_display.refresh)
+
+    def install_progress_callback(self, plugin_name, progress):
+        """Progress callback for plugin installation"""
+        self.installing_progress[plugin_name] = progress
+        # Update progress in install_data
+        for plugin in self.install_data:
+            if plugin["name"] == plugin_name:
+                plugin["progress"] = progress
+                break
         if self._app_ref:
             self._app_ref.call_from_thread(self._app_ref.rich_display.refresh)
 
@@ -267,12 +287,163 @@ class InstallTab(Tab):
     def __init__(self):
         super().__init__("Install")
 
-    def build(self):
+    def _get_installable_plugins(self, app_state):
+        plugin_loader = PluginLoader(COFFEE_PLUGINS_LIST_DIR)
+        config_plugins = plugin_loader.load_plugins()
+
+        # Load currently installed plugins
+        lock_data = lfm.read_lock_file()
+        installed_plugin_names = {p.get("name") for p in lock_data.get("plugins", [])}
+
+        # Filter out already installed plugins
+        installable = []
+        for plugin in config_plugins:
+            if plugin["name"] not in installed_plugin_names:
+                # Add metadata for display
+                plugin_data = {
+                    "name": plugin["name"],
+                    "url": plugin["url"],
+                    "tag": plugin.get("tag", "latest"),
+                    "description": f"{plugin['url']}",
+                    "sources": len(plugin.get("source", [])),
+                    "env_vars": len(plugin.get("env", {})),
+                    "marked": False,
+                    "progress": 0,
+                    "_config": plugin,  # Store original config
+                }
+                installable.append(plugin_data)
+
+        return installable
+
+    def build_install_list_panel(self, app_state):
+        table = Table.grid(expand=True, padding=(0, 1))
+        table.add_column("Plugin", ratio=1)
+
+        # Only regenerate install data if it doesn't exist
+        if not hasattr(app_state, "install_data") or not app_state.install_data:
+            installable_plugins = self._get_installable_plugins(app_state)
+            app_state.install_data = installable_plugins
+        else:
+            installable_plugins = app_state.install_data
+
+        if not installable_plugins:
+            table.add_row(
+                Text("✓ All configured plugins are installed", style="bold #9ece6a")
+            )
+        else:
+            for i, plugin in enumerate(installable_plugins):
+                is_selected = i == app_state.install_selected
+                marked = plugin.get("marked", False)
+
+                # Mark checkbox
+                mark_text = Text(
+                    "[✓] " if marked else "[ ] ",
+                    style=f"bold {selection_color}" if marked else "dim white",
+                )
+
+                tag_text = f" ({plugin['tag']})" if plugin["tag"] != "latest" else ""
+                name_text = Text(
+                    f"{plugin['name']}{tag_text}",
+                    style=f"bold {selection_color}" if is_selected else "white",
+                )
+
+                progress = plugin.get("progress", 0)
+                progress_text_obj = Text()
+                if progress > 0 and progress < 100:
+                    bar_len = 15
+                    filled_len = int(progress / 100 * bar_len)
+                    bar = "█" * filled_len + "░" * (bar_len - filled_len)
+                    progress_text_obj = Text(f" {bar} {progress}%", style="yellow")
+                elif progress == 100:
+                    progress_text_obj = Text(" ✔ Installed", style="green")
+
+                row_text_obj = Text.assemble(mark_text, name_text, progress_text_obj)
+                table.add_row(row_text_obj)
+
+        title = f"Available for Install ({len(installable_plugins)})"
         return Panel(
-            Text("Install tab coming soon..."),
-            border_style="magenta",
+            table,
+            title=title,
+            border_style=accent_color,
+            box=ROUNDED,
             style=background_style,
         )
+
+    def build_install_details_panel(self, app_state):
+        installable_plugins = getattr(app_state, "install_data", [])
+
+        if not installable_plugins or app_state.install_selected >= len(
+            installable_plugins
+        ):
+            details = Text(
+                "No plugin selected or all plugins installed.\n\nAdd plugins to your YAML config files to see them here."
+            )
+        else:
+            plugin = installable_plugins[app_state.install_selected]
+            details = Text()
+            details.append(f"● {plugin['name']}\n\n", style=f"bold {section_color}")
+            details.append(
+                f"{'Repository':<18}: {plugin['description']}\n", style="white"
+            )
+            details.append(f"{'Version':<18}: {plugin['tag']}\n", style="white")
+            details.append(
+                f"{'Env Variables':<18}: {plugin['env_vars']}\n\n", style="white"
+            )
+
+            # Show installation status
+            progress = plugin.get("progress", 0)
+            if progress > 0 and progress < 100:
+                bar_len = 20
+                filled_len = int(progress / 100 * bar_len)
+                bar = "█" * filled_len + "░" * (bar_len - filled_len)
+                details.append(f"Installing... {bar} {progress}%\n", style="yellow")
+            elif progress == 100:
+                details.append("✔ Successfully installed\n", style="green")
+            elif plugin.get("marked", False):
+                details.append("Status: Marked for installation\n", style="yellow")
+            else:
+                details.append("Status: Ready to install\n", style=highlight_color)
+
+        return Panel(
+            details,
+            title="Plugin Details",
+            border_style=accent_color,
+            box=ROUNDED,
+            style=background_style,
+        )
+
+    def build_install_controls_panel(self, app_state):
+        controls = Text()
+        controls.append("[Space] Mark/Unmark ", style="#5F9EA0")
+        controls.append("[i] Install Marked ", style="#5F9EA0")
+        controls.append("[ctrl+a] Install All ", style="#5F9EA0")
+
+        # Show count of marked plugins
+        installable_plugins = getattr(app_state, "install_data", [])
+        marked_count = len([p for p in installable_plugins if p.get("marked", False)])
+        if marked_count > 0:
+            controls.append(f"({marked_count} marked)", style="yellow")
+
+        return Panel(
+            controls,
+            title="Controls",
+            border_style=accent_color,
+            box=ROUNDED,
+            style=background_style,
+        )
+
+    def build_panel(self, app_state):
+        left = self.build_install_list_panel(app_state)
+        right = self.build_install_details_panel(app_state)
+
+        layout = Layout(name="install_layout")
+        layout.split_row(Layout(left, ratio=1), Layout(right, ratio=1))
+
+        bottom = self.build_install_controls_panel(app_state)
+        main_layout = Layout()
+        main_layout.split_column(Layout(layout, ratio=3), Layout(bottom, size=3))
+
+        return main_layout
 
 
 class UpdateTab(Tab):
@@ -575,7 +746,7 @@ class RichDisplay(Static):
         if tab == "Home":
             layout["body"].update(HomeTab().create_home_panel(self.app_state))
         elif tab == "Install":
-            layout["body"].update(InstallTab().build())
+            layout["body"].update(InstallTab().build_panel(self.app_state))
         elif tab == "Update":
             layout["body"].update(UpdateTab().build_panel(self.app_state))
         elif tab == "Remove":
@@ -592,16 +763,25 @@ class PluginManagerApp(App):
         Binding("I", "switch_to_install", "Install", show=False),
         Binding("U", "switch_to_update", "Updates", show=False),
         Binding("R", "switch_to_remove", "Remove", show=False),
+        # Movement
         Binding("j", "move_down", "Down", show=False),
         Binding("k", "move_up", "Up", show=False),
+        Binding("down", "move_down", "Down", show=False),
+        Binding("up", "move_up", "Up", show=False),
+        # Actions
         Binding("space", "toggle_plugin_or_mark", "Toggle/Mark", show=False),
         Binding("/", "enter_search_mode", "Search", show=False),
         Binding("escape", "exit_search_mode", "Exit Search", show=False),
+        # Updates
         Binding("c", "check_updates", "Check Updates", show=False),
         Binding("ctrl+u", "update_all", "Update All", show=False),
         Binding("u", "update_marked", "Update Marked", show=False),
+        # Removal
         Binding("r", "remove_marked", "Remove Marked", show=False),
         Binding("ctrl+r", "refresh_remove_list", "Refresh Remove List", show=False),
+        # Installation
+        Binding("i", "install_marked", "Install Marked", show=False),
+        Binding("ctrl+a", "install_all", "Install All", show=False),
     ]
 
     def __init__(self):
@@ -620,6 +800,13 @@ class PluginManagerApp(App):
 
     def action_switch_to_install(self):
         self.app_state.current_tab = "Install"
+        # Reset selection when switching tabs
+        self.app_state.install_selected = 0
+        # Populate install data when switching to tab
+        install_tab = InstallTab()
+        self.app_state.install_data = install_tab._get_installable_plugins(
+            self.app_state
+        )
         self.rich_display.refresh()
 
     def action_switch_to_update(self):
@@ -650,6 +837,13 @@ class PluginManagerApp(App):
             if self.app_state.current_selection < len(display_list) - 1:
                 self.app_state.current_selection += 1
                 self._update_scroll_offset(display_list)
+        elif self.app_state.current_tab == "Install":
+            installable_plugins = getattr(self.app_state, "install_data", [])
+            if (
+                installable_plugins
+                and self.app_state.install_selected < len(installable_plugins) - 1
+            ):
+                self.app_state.install_selected += 1
         elif self.app_state.current_tab == "Update":
             updates_with_updates = UpdateTab()._get_updates_with_updates(self.app_state)
             if (
@@ -667,6 +861,9 @@ class PluginManagerApp(App):
             if self.app_state.current_selection > 0:
                 self.app_state.current_selection -= 1
                 self._update_scroll_offset(HomeTab().get_display_list())
+        elif self.app_state.current_tab == "Install":
+            if self.app_state.install_selected > 0:
+                self.app_state.install_selected -= 1
         elif self.app_state.current_tab == "Update":
             if self.app_state.update_selected > 0:
                 self.app_state.update_selected -= 1
@@ -678,6 +875,13 @@ class PluginManagerApp(App):
     def action_toggle_plugin_or_mark(self):
         if self.app_state.current_tab == "Home":
             toggle_plugin(self.app_state)
+        elif self.app_state.current_tab == "Install":
+            installable_plugins = getattr(self.app_state, "install_data", [])
+            if installable_plugins and 0 <= self.app_state.install_selected < len(
+                installable_plugins
+            ):
+                plugin = installable_plugins[self.app_state.install_selected]
+                plugin["marked"] = not plugin.get("marked", False)
         elif self.app_state.current_tab == "Update":
             updates_with_updates = UpdateTab()._get_updates_with_updates(self.app_state)
             if updates_with_updates and 0 <= self.app_state.update_selected < len(
@@ -701,6 +905,117 @@ class PluginManagerApp(App):
             if not self.app_state.checking_updates:
                 self.app_state.refresh_updates()
             self.rich_display.refresh()
+
+    @work(exclusive=True, thread=True)
+    def install_plugins_in_background(self, plugins_to_install):
+        """Worker to install plugins and report progress."""
+        try:
+            console.log(
+                f"[blue]Background installation started for plugins: {[p['name'] for p in plugins_to_install]}[/blue]"
+            )
+
+            installer = PluginInstaller(
+                [p["_config"] for p in plugins_to_install],
+                PLUGINS_DIR,
+                os.path.expanduser("~/.config/tmux/"),
+            )
+
+            installed_plugins = []
+            for plugin_data in plugins_to_install:
+                plugin_name = plugin_data["name"]
+                config = plugin_data["_config"]
+                console.log(f"[blue]Starting installation for {plugin_name}[/blue]")
+
+                # Create a progress callback for this specific plugin
+                def progress_callback(progress):
+                    self.app_state.install_progress_callback(plugin_name, progress)
+
+                success, used_tag = installer._install_git_plugin_with_progress(
+                    config, progress_callback
+                )
+
+                if success:
+                    # Update lock file
+                    installer._update_lock_file(config, used_tag)
+
+                    # Complete
+                    self.app_state.install_progress_callback(plugin_name, 100)
+                    console.log(f"[green]Successfully installed {plugin_name}[/green]")
+                    installed_plugins.append(plugin_name)
+                else:
+                    console.log(f"[red]Failed to install {plugin_name}[/red]")
+                    self.app_state.install_progress_callback(plugin_name, 0)
+                    self.call_from_thread(
+                        lambda name=plugin_name: self.notify(
+                            f"Failed to install {name}", severity="error"
+                        )
+                    )
+
+            # Remove successfully installed plugins from install_data
+            if installed_plugins:
+                console.log(
+                    f"[green]Removing installed plugins from install list: {installed_plugins}[/green]"
+                )
+                # Filter out installed plugins
+                self.app_state.install_data = [
+                    p
+                    for p in self.app_state.install_data
+                    if p["name"] not in installed_plugins
+                ]
+
+                # Reset selection if needed
+                if self.app_state.install_selected >= len(self.app_state.install_data):
+                    self.app_state.install_selected = max(
+                        0, len(self.app_state.install_data) - 1
+                    )
+
+            # Final UI refresh
+            self.call_from_thread(self.rich_display.refresh)
+            console.log("[blue]Background installation worker completed[/blue]")
+
+        except Exception as e:
+            console.log(f"[red]Error in background installation: {e}[/red]")
+            import traceback
+
+            console.log(f"[red]Traceback: {traceback.format_exc()}[/red]")
+            self.call_from_thread(
+                lambda: self.notify(f"Installation failed: {str(e)}", severity="error")
+            )
+
+    def action_install_marked(self):
+        """Install all plugins marked for installation."""
+        self.console.log("✅ Ctrl+I pressed, installing all plugins...")
+        if self.app_state.current_tab == "Install":
+            installable_plugins = getattr(self.app_state, "install_data", [])
+            marked_plugins = [p for p in installable_plugins if p.get("marked", False)]
+
+            if marked_plugins:
+                # Reset progress for marked plugins
+                for plugin in marked_plugins:
+                    plugin["progress"] = 0
+                    self.app_state.installing_progress[plugin["name"]] = 0
+
+                self.install_plugins_in_background(marked_plugins)
+                self.notify(f"Installing {len(marked_plugins)} marked plugin(s)...")
+            else:
+                self.notify(
+                    "No plugins marked for installation. Use Space to mark plugins first."
+                )
+        self.rich_display.refresh()
+
+    def action_install_all(self) -> None:
+        if self.app_state.current_tab == "Install":
+            installable_plugins = getattr(self.app_state, "install_data", [])
+            if installable_plugins:
+                # Reset progress for all plugins
+                for plugin in installable_plugins:
+                    plugin["progress"] = 0
+                    self.app_state.installing_progress[plugin["name"]] = 0
+
+                self.install_plugins_in_background(installable_plugins)
+                self.notify(f"Installing all {len(installable_plugins)} plugin(s)...")
+
+        self.rich_display.refresh()
 
     @work(exclusive=True, thread=True)
     def update_plugins_in_background(self, plugins_to_update):

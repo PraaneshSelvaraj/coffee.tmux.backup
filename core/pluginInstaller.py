@@ -22,28 +22,37 @@ class PluginInstaller:
 
     def _install_git_plugin(self, plugin):
         plugin_path = os.path.join(self.plugins_dir, plugin["name"])
-        print(plugin)
 
         if os.path.exists(plugin_path):
-            print(
-                f"🤷 {plugin['name']} already exists. Skipping installation like a lazy dev."
-            )
             return True, plugin.get("tag", None)
 
         repo_url = f"https://github.com/{plugin['url']}"
         used_tag = plugin.get("tag")
 
         try:
-            # Always start with shallow clone (fast like your deadlines)
-            subprocess.run(["git", "clone", repo_url, plugin_path], check=True)
+            subprocess.run(
+                ["git", "clone", repo_url, plugin_path],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
-            subprocess.run(["git", "fetch", "--tags"], cwd=plugin_path, check=True)
+            subprocess.run(
+                ["git", "fetch", "--tags"],
+                cwd=plugin_path,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
             if used_tag:
                 subprocess.run(
-                    ["git", "checkout", used_tag], cwd=plugin_path, check=True
+                    ["git", "checkout", used_tag],
+                    cwd=plugin_path,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
-                print(f"✅ {plugin['name']} checked out at tag {used_tag}")
             else:
                 latest_tag = self._get_latest_tag(plugin_path)
                 if latest_tag:
@@ -51,17 +60,87 @@ class PluginInstaller:
                         ["git", "checkout", f"tags/{latest_tag}"],
                         cwd=plugin_path,
                         check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                     )
                     used_tag = latest_tag
-                    print(f"📦 {plugin['name']} installed with latest tag {latest_tag}")
-                else:
-                    used_tag = None
-                    print(
-                        f"⚠️ No tags found for {plugin['name']}, sticking to default branch."
-                    )
 
         except Exception as e:
-            print(f"💥 Error installing {repo_url} (tag={used_tag}): {e}")
+            return False, None
+
+        return True, used_tag or None
+
+    def _install_git_plugin_with_progress(self, plugin, progress_callback=None):
+        """Install git plugin with progress reporting"""
+        plugin_path = os.path.join(self.plugins_dir, plugin["name"])
+
+        if os.path.exists(plugin_path):
+            if progress_callback:
+                progress_callback(100)
+            return True, plugin.get("tag", None)
+
+        repo_url = f"https://github.com/{plugin['url']}"
+        used_tag = plugin.get("tag")
+
+        try:
+            # Starting installation
+            if progress_callback:
+                progress_callback(5)
+
+            # Clone repository
+            subprocess.run(
+                ["git", "clone", repo_url, plugin_path],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            if progress_callback:
+                progress_callback(40)
+
+            # Fetch tags
+            subprocess.run(
+                ["git", "fetch", "--tags"],
+                cwd=plugin_path,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            if progress_callback:
+                progress_callback(60)
+
+            if used_tag:
+                subprocess.run(
+                    ["git", "checkout", used_tag],
+                    cwd=plugin_path,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                if progress_callback:
+                    progress_callback(90)
+            else:
+                latest_tag = self._get_latest_tag(plugin_path)
+                if progress_callback:
+                    progress_callback(70)
+
+                if latest_tag:
+                    subprocess.run(
+                        ["git", "checkout", f"tags/{latest_tag}"],
+                        cwd=plugin_path,
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    used_tag = latest_tag
+
+                if progress_callback:
+                    progress_callback(90)
+
+        except Exception as e:
+            if progress_callback:
+                progress_callback(0)
             return False, None
 
         return True, used_tag or None
@@ -72,7 +151,7 @@ class PluginInstaller:
                 ["git", "tag", "--sort=-creatordate"],
                 cwd=plugin_path,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 check=True,
                 text=True,
             )
@@ -81,8 +160,7 @@ class PluginInstaller:
                 return tags[0]
             else:
                 return None
-        except subprocess.CalledProcessError as e:
-            print(f"⚠️ Failed to get tags from {plugin_path}: {e.stderr}")
+        except subprocess.CalledProcessError:
             return None
 
     def _update_lock_file(self, plugin, used_tag):
@@ -129,7 +207,6 @@ class PluginInstaller:
             )
             return result.stdout.strip()
         except subprocess.CalledProcessError:
-            print(f"💀 Couldn't get commit hash for {plugin['name']}")
             return None
 
     def _get_current_timestamp(self):
