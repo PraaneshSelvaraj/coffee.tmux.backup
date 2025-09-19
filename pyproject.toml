@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coffee-tmux"
+version = "0.1.0"
+description = "Modern tmux plugin manager with CLI and TUI"
+readme = "README.md"
+authors = [
+  {name = "Praanesh S", email = "praaneshselvaraj2003@gmail.com"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+keywords = ["tmux", "coffee", "coffee.tmux", "plugin-manager", "cli", "tui"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Environment :: Console",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/PraaneshSelvaraj/coffee.tmux"
+"Repository" = "https://github.com/PraaneshSelvaraj/coffee.tmux"
+"Bug Tracker" = "https://github.com/PraaneshSelvaraj/coffee.tmux/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[project.optional-dependencies]
+dev = [
+  "black>=23.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py38"]
+exclude = '''
+/(
+  \.direnv
+  | \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.nox
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''

@@ -1,7 +1,6 @@
 # ☕ Coffee - Modern tmux Plugin Manager
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)  
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)]()
 
 Coffee is a modern and intuitive tmux plugin manager with powerful CLI and terminal UI (TUI). It empowers users to easily install, update, enable/disable, and remove tmux plugins with rich progress feedback and asynchronous operations.
 

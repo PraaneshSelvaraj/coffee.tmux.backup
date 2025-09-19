@@ -13,6 +13,7 @@ from rich.progress import (
 )
 from rich.table import Table
 from rich.panel import Panel
+from importlib.metadata import version, PackageNotFoundError
 
 console = Console()
 
@@ -40,7 +41,14 @@ def setup_directories():
 
 def print_version():
     """Print Coffee version"""
-    console.print("Coffee v1.0.0", style=f"bold {ACCENT_COLOR}", highlight=False)
+    try:
+        __version__ = version("coffee-tmux")
+    except PackageNotFoundError:
+        __version__ = "0.1.0"
+
+    console.print(
+        f"Coffee {__version__}", style=f"bold {ACCENT_COLOR}", highlight=False
+    )
     console.print("Modern tmux plugin manager", highlight=False)
 
 
