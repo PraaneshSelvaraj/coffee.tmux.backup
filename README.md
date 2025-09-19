@@ -15,8 +15,6 @@ Coffee is a modern and intuitive tmux plugin manager with powerful CLI and termi
 - Easy enable/disable of plugins without uninstalling
 - Keyboard-driven keybindings modeled after tmux conventions for streamlined workflows
 
----
-
 ## Installation
 
 ### Prerequisites
@@ -32,6 +30,11 @@ git clone https://github.com/PraaneshSelvaraj/coffee.tmux ~/.local/share/coffee
 cd ~/.local/share/coffee
 pip install -r requirements.txt
 ```
+### Add Coffee CLI to PATH
+```bash
+export PATH="$HOME/.local/share/coffee/bin:$PATH"
+```
+Add this line to your shell config file (e.g. `~/.bashrc` or `~/.zshrc`) to make it permanent.
 
 ### tmux Configuration
 
@@ -44,6 +47,13 @@ After editing your tmux config, reload it with:
 ```bash
 tmux source-file ~/.tmux.conf
 ```
+
+### Install Plugins
+After setup and reloading tmux, run:
+```bash
+coffee install
+```
+This installs all plugins configured in your YAML files.
 
 ## Usage
 
@@ -103,8 +113,6 @@ Fields:
 - `source`: List of plugin source script files loaded by tmux
 - `env`: Environment variables to set when sourcing the plugin
 
----
-
 ## Uninstall Plugins
 
 To uninstall a plugin, remove its YAML configuration file and run:
@@ -134,14 +142,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Inspired by [tmux-plugins/tpm](https://github.com/tmux-plugins/tpm), and powered by [rich](https://github.com/Textualize/rich) and [textual](https://github.com/Textualize/textual).
 
----
 
 ## Contact
 
 Maintainer: Praanesh S  
 GitHub: [PraaneshSelvaraj](https://github.com/PraaneshSelvaraj)  
 Email: praaneshselvaraj2003@gmail.com
-
----
 
 For questions or support, please open an issue on GitHub.
