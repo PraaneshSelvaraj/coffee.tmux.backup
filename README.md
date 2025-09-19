@@ -1,9 +1,10 @@
-# ☕ Coffee - Modern tmux Plugin Manager
+#![Coffee TUI Home](screenshots/ui-home.png "Coffee TUI Home Tab") ☕ Coffee - Modern tmux Plugin Manager
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)]()
 
 Coffee is a modern and intuitive tmux plugin manager with powerful CLI and terminal UI (TUI). It empowers users to easily install, update, enable/disable, and remove tmux plugins with rich progress feedback and asynchronous operations.
 
+![Coffee TUI Home](screenshots/coffee-home.png "Coffee TUI Home Tab")
 
 ## Features
 
@@ -25,39 +26,48 @@ Coffee is a modern and intuitive tmux plugin manager with powerful CLI and termi
 
 ### Clone & Setup
 
-```bash 
+```bash
 git clone https://github.com/PraaneshSelvaraj/coffee.tmux ~/.local/share/coffee
 cd ~/.local/share/coffee
 pip install -r requirements.txt
 ```
+
 ### Add Coffee CLI to PATH
+
 ```bash
 export PATH="$HOME/.local/share/coffee/bin:$PATH"
 ```
+
 Add this line to your shell config file (e.g. `~/.bashrc` or `~/.zshrc`) to make it permanent.
 
 ### tmux Configuration
 
 Add the following to your `.tmux.conf` (or `$XDG_CONFIG_HOME/tmux/tmux.conf`):
+
 ```bash
 source-file ~/.local/share/coffee/coffee.tmux
 ```
 
 After editing your tmux config, reload it with:
+
 ```bash
 tmux source-file ~/.tmux.conf
 ```
 
 ### Install Plugins
+
 After setup and reloading tmux, run:
+
 ```bash
 coffee install
 ```
+
 This installs all plugins configured in your YAML files.
 
 ## Usage
 
 ### CLI Commands
+
 ```bash
 coffee install # Install configured plugins
 coffee update # Check for plugin updates
@@ -83,7 +93,6 @@ Navigate with keys:
 
 Use `j`/`k` or arrow keys to move selections, `Space` to mark/toggle, and follow on-screen controls.
 
-
 ## Plugin Configuration
 
 Create YAML files in:
@@ -91,7 +100,6 @@ Create YAML files in:
 ```bash
 ~/.config/tmux/coffee/plugins/
 ```
-
 
 Example configuration:
 
@@ -117,7 +125,6 @@ Fields:
 
 To uninstall a plugin, remove its YAML configuration file and run:
 
-
 ```bash
 coffee remove <plugin-name>
 ```
@@ -133,7 +140,6 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 - Coding style and tests
 - Submitting pull requests
 
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -141,7 +147,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgements
 
 Inspired by [tmux-plugins/tpm](https://github.com/tmux-plugins/tpm), and powered by [rich](https://github.com/Textualize/rich) and [textual](https://github.com/Textualize/textual).
-
 
 ## Contact
 
