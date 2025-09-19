@@ -28,8 +28,8 @@ Coffee is a modern and intuitive tmux plugin manager with powerful CLI and termi
 ### Clone & Setup
 
 ```bash 
-git clone https://github.com/PraaneshSelvaraj/coffee.tmux ~/.tmux/coffee
-cd ~/.tmux/coffee
+git clone https://github.com/PraaneshSelvaraj/coffee.tmux ~/.local/share/coffee
+cd ~/.local/share/coffee
 pip install -r requirements.txt
 ```
 
@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 Add the following to your `.tmux.conf` (or `$XDG_CONFIG_HOME/tmux/tmux.conf`):
 ```bash
-source-file ~/.tmux/coffee/coffee.tmux
+source-file ~/.local/share/coffee/coffee.tmux
 ```
 
 After editing your tmux config, reload it with:
