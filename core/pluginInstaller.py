@@ -15,10 +15,10 @@ class PluginInstaller:
             print(f"Installing {plugin.get('name')}...")
             success, used_tag = self._install_git_plugin(plugin)
             if success:
-                print(f"✅ Successfully installed {plugin.get('name')} @ {used_tag}")
+                print(f"Successfully installed {plugin.get('name')} @ {used_tag}")
                 self._update_lock_file(plugin, used_tag)
             else:
-                print(f"❌ Failed to install {plugin.get('name')}")
+                print(f"Failed to install {plugin.get('name')}")
 
     def _install_git_plugin(self, plugin):
         plugin_path = os.path.join(self.plugins_dir, plugin["name"])

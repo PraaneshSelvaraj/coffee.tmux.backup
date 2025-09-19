@@ -75,9 +75,6 @@ class RemoveTab(Tab):
             details.append(f"{'Size':<18}: {plugin['size']}\n", style="white")
             details.append(f"{'Installed':<18}: {plugin['installed']}\n", style="white")
             details.append(
-                f"{'Dependencies':<18}: {plugin['dependencies']}\n", style="white"
-            )
-            details.append(
                 f"{'Status':<18}: {'Enabled' if plugin['enabled'] else 'Disabled'}\n",
                 style="white",
             )

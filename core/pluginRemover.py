@@ -58,7 +58,6 @@ class PluginRemover:
                     "version": version,
                     "size": size,
                     "installed": installed_time,
-                    "dependencies": "None",  # You might want to implement dependency checking
                     "enabled": plugin.get("enabled", False),
                     "env": plugin.get("env", {}),
                 }

@@ -18,4 +18,4 @@ def write_lock_file(data):
         with open(LOCK_FILE_PATH, "w") as f:
             json.dump(data, f, indent=4)
     except Exception as e:
-        print(f"💥 Error writing lock file: {e}")
+        print(f"Error writing lock file: {e}")

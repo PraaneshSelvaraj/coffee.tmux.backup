@@ -10,8 +10,18 @@ Modules:
 - pluginRemover: Manages plugin removals.
 """
 
-from .pluginInstaller import PluginInstaller
-from .pluginLoader import PluginLoader
 from .pluginSourcer import PluginSourcer
-from .pluginUpdater import PluginUpdater
+from .pluginInstaller import PluginInstaller
 from .pluginRemover import PluginRemover
+from .pluginUpdater import PluginUpdater
+from .pluginLoader import PluginLoader
+from . import lock_file_manager
+
+__all__ = [
+    "PluginSourcer",
+    "PluginInstaller",
+    "PluginRemover",
+    "PluginUpdater",
+    "PluginLoader",
+    "lock_file_manager",
+]

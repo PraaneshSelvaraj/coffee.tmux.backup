@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
+# Bind key to open Coffee TUI in popup
+bind-key C run-shell 'COFFEE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; tmux display-popup -E "python3 \"$COFFEE_DIR/ui.py\""'
 
-set-environment -g TMUX_PLUGIN_MANAGER_PATH "$HOME/.tmux/coffee/plugins"
-run-shell "python3 $HOME/Documents/coffee.tmux/main.py --bootstrap"
-bind-key C run-shell "tmux display-popup -E 'python3 $HOME/Documents/coffee.tmux/ui.py'"
+# Source all enabled plugins
+run-shell 'COFFEE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; python3 "$COFFEE_DIR/cli/main.py" --source-plugins'

@@ -73,7 +73,6 @@ class PluginUpdater:
                 parts = line.split()
                 if len(parts) == 2 and "refs/tags/" in parts[1]:
                     tag = parts[1].split("/")[-1]
-                    # Strip trailing ^{} if present (annotated tags)
                     if tag.endswith("^{}"):
                         tag = tag[:-3]
                     tags.append(tag)
@@ -173,7 +172,7 @@ class PluginUpdater:
             if current_tag:
                 remote_tags = self._get_remote_tags(repo_url)
                 if remote_tags:
-                    latest_tag = remote_tags[0]  # First tag after sorting
+                    latest_tag = remote_tags[0]
                     new_tag = latest_tag
                     update_type = "tag"
 

@@ -28,7 +28,7 @@ class PluginSourcer:
         for script in scripts:
             if plugin.get("enabled", True):
                 self._run_plugin_script(script, env_vars)
-                print(f"🌟 Executed {plugin_name} script from {script} with env vars")
+                print(f"Executed {plugin_name} script from {script} with env vars")
 
     def _run_plugin_script(self, script_path, env_vars=None):
         try:
@@ -40,9 +40,9 @@ class PluginSourcer:
 
             subprocess.run(["tmux", "run-shell", f"{script_path}"], check=True)
 
-            print(f"✅ Ran script: {script_path} with env vars")
+            print(f"Ran script: {script_path} with env vars")
         except subprocess.CalledProcessError as e:
-            print(f"💣 Error running script {script_path}: {e}")
+            print(f"Error running script {script_path}: {e}")
 
     def activate_plugin(self, plugin_name):
         self._set_plugin_enabled(plugin_name, True)
@@ -60,10 +60,10 @@ class PluginSourcer:
             if plugin.get("name") == plugin_name:
                 plugin["enabled"] = state
                 status = "enabled" if state else "disabled"
-                print(f"🔄 Plugin '{plugin_name}' is now {status}.")
+                print(f"Plugin '{plugin_name}' is now {status}.")
                 break
         else:
-            print(f"❓ Plugin '{plugin_name}' not found in the lock file.")
+            print(f"Plugin '{plugin_name}' not found in the lock file.")
             return
 
         lfm.write_lock_file(lock_data)
