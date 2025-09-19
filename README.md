@@ -29,7 +29,7 @@ Coffee is a modern and intuitive tmux plugin manager with powerful CLI and termi
 ### Clone & Setup
 
 ```bash 
-git clone https://github.com/yourusername/coffee.tmux ~/.tmux/coffee
+git clone https://github.com/PraaneshSelvaraj/coffee.tmux ~/.tmux/coffee
 cd ~/.tmux/coffee
 pip install -r requirements.txt
 ```
