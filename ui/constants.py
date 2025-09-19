@@ -1,6 +1,6 @@
 import os
-from rich.style import Style
 
+from rich.style import Style
 
 PLUGINS_DIR = os.path.expanduser("~/.tmux/coffee/plugins")
 TMUX_CONFIG_DIR = os.path.expanduser("~/.config/tmux/")

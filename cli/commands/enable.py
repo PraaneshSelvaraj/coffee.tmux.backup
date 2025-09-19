@@ -2,20 +2,28 @@
 Enable command implementation
 """
 
+from typing import Any
+
 from core import PluginSourcer
 from core import lock_file_manager as lfm
-from ..utils import print_success, print_error, print_info
+
+from ..utils import print_error, print_info, print_success
 
 
-def run(args):
+class Args:
+    plugin: str
+    quiet: bool
+
+
+def run(args: Args) -> int:
     """Run enable command"""
     try:
         # Check current state first
-        lock_data = lfm.read_lock_file()
-        plugins = lock_data.get("plugins", [])
+        lock_data: lfm.LockData = lfm.read_lock_file()
+        plugins: list[dict[str, Any]] = lock_data.get("plugins", [])
 
-        plugin_found = False
-        current_state = None
+        plugin_found: bool = False
+        current_state: bool | None = None
 
         for plugin in plugins:
             if plugin.get("name") == args.plugin:

@@ -1,17 +1,26 @@
+from typing import Any, List, Set
+
+from rich.box import ROUNDED
+from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.layout import Layout
-from rich.box import ROUNDED
+
+from ..constants import (
+    ACCENT_COLOR,
+    BACKGROUND_STYLE,
+    HIGHLIGHT_COLOR,
+    SECTION_COLOR,
+    SELECTION_COLOR,
+)
 from .base import Tab
-from ..constants import *
 
 
 class RemoveTab(Tab):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Remove")
 
-    def build_remove_list_panel(self, app_state):
+    def build_remove_list_panel(self, app_state: Any) -> Panel:
         table = Table.grid(expand=True, padding=(0, 1))
         table.add_column("Plugin", ratio=1)
 
@@ -20,15 +29,13 @@ class RemoveTab(Tab):
         else:
             for i, plugin in enumerate(app_state.remove_data):
                 is_selected = i == app_state.remove_selected
-                marked = plugin["name"] in app_state.marked_for_removal
-
-                # Mark checkbox
+                marked = plugin["name"] in getattr(
+                    app_state, "marked_for_removal", set()
+                )
                 mark_text = Text(
                     "[✓] " if marked else "[ ] ",
                     style=f"bold {SELECTION_COLOR}" if marked else "dim white",
                 )
-
-                # Plugin name and version
                 version_text = (
                     f" ({plugin['version']})" if plugin["version"] != "N/A" else ""
                 )
@@ -36,22 +43,19 @@ class RemoveTab(Tab):
                     f"{plugin['name']}{version_text}",
                     style=f"bold {SELECTION_COLOR}" if is_selected else "white",
                 )
-
-                # Progress bar
                 progress = app_state.removing_progress.get(plugin["name"], 0)
                 progress_text_obj = Text()
-                if progress > 0 and progress < 100:
+                if 0 < progress < 100:
                     bar_len = 15
                     filled_len = int(progress / 100 * bar_len)
                     bar = "█" * filled_len + "░" * (bar_len - filled_len)
                     progress_text_obj = Text(f" {bar} {progress}%", style="yellow")
                 elif progress == 100:
                     progress_text_obj = Text(" ✔ Removed", style="green")
-
                 row_text_obj = Text.assemble(mark_text, name_text, progress_text_obj)
                 table.add_row(row_text_obj)
 
-        title = f"Installed Plugins ({len(app_state.remove_data)})"
+        title = f"Installed Plugins ({len(app_state.remove_data) if app_state.remove_data else 0})"
         return Panel(
             table,
             title=title,
@@ -60,7 +64,7 @@ class RemoveTab(Tab):
             style=BACKGROUND_STYLE,
         )
 
-    def build_remove_details_panel(self, app_state):
+    def build_remove_details_panel(self, app_state: Any) -> Panel:
         if not app_state.remove_data or app_state.remove_selected >= len(
             app_state.remove_data
         ):
@@ -84,21 +88,18 @@ class RemoveTab(Tab):
                 )
             else:
                 details.append("\n")
-
-            # Show removal status
             progress = app_state.removing_progress.get(plugin["name"], 0)
-            if progress > 0 and progress < 100:
+            if 0 < progress < 100:
                 bar_len = 20
                 filled_len = int(progress / 100 * bar_len)
                 bar = "█" * filled_len + "░" * (bar_len - filled_len)
                 details.append(f"Removing... {bar} {progress}%\n", style="yellow")
             elif progress == 100:
                 details.append("✔ Successfully removed\n", style="green")
-            elif plugin["name"] in app_state.marked_for_removal:
+            elif plugin["name"] in getattr(app_state, "marked_for_removal", set()):
                 details.append("Status: Marked for removal\n", style="yellow")
             else:
                 details.append("Status: Available for removal\n", style=HIGHLIGHT_COLOR)
-
         return Panel(
             details,
             title="Plugin Details",
@@ -107,16 +108,13 @@ class RemoveTab(Tab):
             style=BACKGROUND_STYLE,
         )
 
-    def build_remove_controls_panel(self, app_state):
+    def build_remove_controls_panel(self, app_state: Any) -> Panel:
         controls = Text()
         controls.append("[Space] Mark/Unmark ", style="#5F9EA0")
         controls.append("[r] Remove Marked ", style="#5F9EA0")
-
-        # Show count of marked plugins
-        marked_count = len(app_state.marked_for_removal)
+        marked_count = len(getattr(app_state, "marked_for_removal", set()))
         if marked_count > 0:
             controls.append(f"({marked_count} marked)", style="yellow")
-
         return Panel(
             controls,
             title="Controls",
@@ -125,7 +123,7 @@ class RemoveTab(Tab):
             style=BACKGROUND_STYLE,
         )
 
-    def build_panel(self, app_state):
+    def build_panel(self, app_state: Any) -> Layout:
         left = self.build_remove_list_panel(app_state)
         right = self.build_remove_details_panel(app_state)
         layout = Layout(name="remove_layout")

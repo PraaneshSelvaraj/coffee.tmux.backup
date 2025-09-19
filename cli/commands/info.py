@@ -2,42 +2,52 @@
 Info command implementation
 """
 
-from core import PluginRemover, lock_file_manager as lfm
-from ..utils import (
-    COFFEE_PLUGINS_DIR,
-    print_error,
-    console,
-    ACCENT_COLOR,
-    HIGHLIGHT_COLOR,
-    ERROR_COLOR,
-    SECTION_COLOR,
-)
+from typing import Any, Optional
+
 from rich.panel import Panel
 from rich.text import Text
 
+from core import PluginRemover
+from core import lock_file_manager as lfm
 
-def run(args):
+from ..utils import (
+    ACCENT_COLOR,
+    COFFEE_PLUGINS_DIR,
+    ERROR_COLOR,
+    HIGHLIGHT_COLOR,
+    SECTION_COLOR,
+    console,
+    print_error,
+)
+
+
+class Args:
+    plugin: str
+
+
+def run(args: Args) -> int:
     """Run info command"""
     try:
         remover = PluginRemover(COFFEE_PLUGINS_DIR)
-        installed_plugins = remover.get_installed_plugins()
+        installed_plugins: list[dict[str, Any]] = remover.get_installed_plugins()
 
         # Find the plugin
-        plugin_info = None
+        plugin_info: Optional[dict[str, Any]] = None
+
         for plugin in installed_plugins:
-            if plugin["name"] == args.plugin:
+            if plugin.get("name") == args.plugin:
                 plugin_info = plugin
                 break
-
         if not plugin_info:
             print_error(f"Plugin '{args.plugin}' is not installed")
             return 1
 
         # Get additional info from lock file
-        lock_data = lfm.read_lock_file()
-        lock_plugin = None
+        lock_data: lfm.LockData = lfm.read_lock_file()
+        lock_plugin: Optional[dict[str, Any]] = None
+
         for p in lock_data.get("plugins", []):
-            if p["name"] == args.plugin:
+            if p.get("name") == args.plugin:
                 lock_plugin = p
                 break
 
@@ -60,12 +70,17 @@ def run(args):
 
         if lock_plugin:
             git_info = lock_plugin.get("git", {})
+
             if git_info.get("repo"):
                 info_text.append(f"Repository: {git_info['repo']}\n", style="dim white")
+
             if git_info.get("commit_hash"):
+                commit_hash = git_info["commit_hash"]
                 info_text.append(
-                    f"Commit: {git_info['commit_hash'][:7]}\n", style="dim white"
+                    f"Commit: {commit_hash[:7] if commit_hash else 'N/A'}\n",
+                    style="dim white",
                 )
+
             if git_info.get("last_pull"):
                 info_text.append(
                     f"Last Updated: {git_info['last_pull']}\n", style="dim white"

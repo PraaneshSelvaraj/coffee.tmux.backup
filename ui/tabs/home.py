@@ -1,21 +1,31 @@
+from typing import Any, Dict, List
+
+from rich.box import ROUNDED
+from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.layout import Layout
-from rich.box import ROUNDED
+
 from core import lock_file_manager as lfm
+
+from ..constants import (
+    ACCENT_COLOR,
+    BACKGROUND_STYLE,
+    HIGHLIGHT_COLOR,
+    SECTION_COLOR,
+    SELECTION_COLOR,
+    VISIBLE_ROWS,
+)
 from .base import Tab
-from ..constants import *
 
 
 class HomeTab(Tab):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Home")
 
-    def get_display_list(self):
+    def get_display_list(self) -> List[Dict[str, Any]]:
         lock_file = lfm.read_lock_file()
         plugins = lock_file.get("plugins", [])
-
         active = sorted(
             [p for p in plugins if p.get("enabled")], key=lambda x: x["name"].lower()
         )
@@ -23,19 +33,16 @@ class HomeTab(Tab):
             [p for p in plugins if not p.get("enabled")],
             key=lambda x: x["name"].lower(),
         )
-
-        display_list = []
+        display_list: List[Dict[str, Any]] = []
         if active:
             display_list.append({"type": "header", "text": "Active Plugins"})
             display_list.extend([{"type": "plugin", "data": p} for p in active])
-
         if inactive:
             display_list.append({"type": "header", "text": "Inactive Plugins"})
             display_list.extend([{"type": "plugin", "data": p} for p in inactive])
-
         return display_list
 
-    def display_installed_plugins(self, app_state):
+    def display_installed_plugins(self, app_state: Any) -> Table:
         display_list = self.get_display_list()
         visible_items = display_list[
             app_state.scroll_offset : app_state.scroll_offset + VISIBLE_ROWS
@@ -67,7 +74,7 @@ class HomeTab(Tab):
                 )
         return table
 
-    def display_plugin_details(self, app_state):
+    def display_plugin_details(self, app_state: Any) -> Panel:
         display_list = self.get_display_list()
         if not display_list or app_state.current_selection >= len(display_list):
             return Panel(
@@ -131,7 +138,7 @@ class HomeTab(Tab):
                 style=BACKGROUND_STYLE,
             )
 
-    def create_home_panel(self, app_state):
+    def create_home_panel(self, app_state: Any) -> Layout:
         plugin_list_panel = Panel(
             self.display_installed_plugins(app_state),
             title="Plugin List",

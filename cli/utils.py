@@ -3,80 +3,79 @@ CLI utility functions
 """
 
 import os
-import sys
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any, List
+
 from rich.console import Console
 from rich.progress import (
+    BarColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
-    BarColumn,
 )
 from rich.table import Table
-from rich.panel import Panel
-from importlib.metadata import version, PackageNotFoundError
 
-console = Console()
+console: Console = Console()
 
-ACCENT_COLOR = "#7aa2f7"
-BACKGROUND_COLOR = "#1a1b26"
-HIGHLIGHT_COLOR = "#9ece6a"
-SELECTION_COLOR = "#bb9af7"
-SECTION_COLOR = "#e0af68"
-ERROR_COLOR = "#f7768e"
+ACCENT_COLOR: str = "#7aa2f7"
+BACKGROUND_COLOR: str = "#1a1b26"
+HIGHLIGHT_COLOR: str = "#9ece6a"
+SELECTION_COLOR: str = "#bb9af7"
+SECTION_COLOR: str = "#e0af68"
+ERROR_COLOR: str = "#f7768e"
 
 # Directories
-COFFEE_BASE_DIR = os.path.expanduser("~/.tmux/coffee")
-COFFEE_SOURCE_DIR = os.path.expanduser("~/.local/share/coffee")
-COFFEE_PLUGINS_DIR = os.path.join(COFFEE_BASE_DIR, "plugins")
-COFFEE_CONFIG_DIR = os.path.expanduser("~/.config/tmux/coffee/plugins")
-LOCK_FILE_PATH = os.path.join(COFFEE_BASE_DIR, "caffeine-lock.json")
+COFFEE_BASE_DIR: str = os.path.expanduser("~/.tmux/coffee")
+COFFEE_SOURCE_DIR: str = os.path.expanduser("~/.local/share/coffee")
+COFFEE_PLUGINS_DIR: str = os.path.join(COFFEE_BASE_DIR, "plugins")
+COFFEE_CONFIG_DIR: str = os.path.expanduser("~/.config/tmux/coffee/plugins")
+LOCK_FILE_PATH: str = os.path.join(COFFEE_BASE_DIR, "caffeine-lock.json")
 
 
-def setup_directories():
+def setup_directories() -> None:
     """Create necessary directories"""
     os.makedirs(COFFEE_PLUGINS_DIR, exist_ok=True)
     os.makedirs(COFFEE_BASE_DIR, exist_ok=True)
     os.makedirs(COFFEE_CONFIG_DIR, exist_ok=True)
 
 
-def print_version():
+def print_version() -> None:
     """Print Coffee version"""
     try:
-        __version__ = version("coffee-tmux")
+        __version__: str = version("coffee-tmux")
     except PackageNotFoundError:
         __version__ = "0.1.0"
-
     console.print(
         f"Coffee {__version__}", style=f"bold {ACCENT_COLOR}", highlight=False
     )
     console.print("Modern tmux plugin manager", highlight=False)
 
 
-def print_success(message):
+def print_success(message: str) -> None:
     """Print success message"""
     console.print(f"[bold {HIGHLIGHT_COLOR}]SUCCESS[/] {message}", highlight=False)
 
 
-def print_error(message):
+def print_error(message: str) -> None:
     """Print error message"""
     console.print(f"[bold {ERROR_COLOR}]ERROR[/] {message}", highlight=False)
 
 
-def print_warning(message):
+def print_warning(message: str) -> None:
     """Print warning message"""
     console.print(f"[bold {SECTION_COLOR}]WARNING[/] {message}", highlight=False)
 
 
-def print_info(message):
+def print_info(message: str) -> None:
     """Print info message"""
     console.print(f"[bold {ACCENT_COLOR}]INFO[/] {message}", highlight=False)
 
 
-def confirm_action(message, default=False):
+def confirm_action(message: str, default: bool = False) -> bool:
     """Ask for user confirmation"""
-    suffix = " [Y/n]" if default else " [y/N]"
+    suffix: str = " [Y/n]" if default else " [y/N]"
     try:
-        response = input(f"{message}{suffix}: ").strip().lower()
+        response: str = input(f"{message}{suffix}: ").strip().lower()
         if not response:
             return default
         return response in ["y", "yes"]
@@ -84,7 +83,7 @@ def confirm_action(message, default=False):
         return False
 
 
-def create_progress():
+def create_progress() -> Progress:
     """Create a rich progress bar"""
     return Progress(
         SpinnerColumn(),
@@ -102,16 +101,18 @@ def create_progress():
     )
 
 
-def format_plugin_table(plugins, title="Plugins"):
+def format_plugin_table(plugins: List[dict[str, Any]], title: str = "Plugins") -> Table:
     """Format plugins as a rich table"""
-    table = Table(title=f"[bold {ACCENT_COLOR}]{title}[/]", border_style=ACCENT_COLOR)
+    table: Table = Table(
+        title=f"[bold {ACCENT_COLOR}]{title}[/]", border_style=ACCENT_COLOR
+    )
     table.add_column("Name", style="bold white")
     table.add_column("Version", style=ACCENT_COLOR)
     table.add_column("Size", style=SECTION_COLOR)
     table.add_column("Status", style="white")
 
     for plugin in plugins:
-        status = (
+        status: str = (
             f"[bold {HIGHLIGHT_COLOR}]Enabled[/]"
             if plugin.get("enabled", True)
             else f"[bold {ERROR_COLOR}]Disabled[/]"
@@ -122,5 +123,4 @@ def format_plugin_table(plugins, title="Plugins"):
             plugin.get("size", "N/A"),
             status,
         )
-
     return table

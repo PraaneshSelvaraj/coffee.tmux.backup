@@ -3,26 +3,37 @@ Install command implementation
 """
 
 import os
-from core import PluginLoader, PluginInstaller
+from typing import Any, Callable, Optional
+
+from rich.progress import TaskID
+
+from core import PluginInstaller, PluginLoader
+
 from ..utils import (
-    COFFEE_PLUGINS_DIR,
+    ACCENT_COLOR,
     COFFEE_CONFIG_DIR,
-    print_success,
+    COFFEE_PLUGINS_DIR,
+    HIGHLIGHT_COLOR,
+    console,
+    create_progress,
     print_error,
     print_info,
-    create_progress,
-    console,
-    HIGHLIGHT_COLOR,
-    ACCENT_COLOR,
+    print_success,
 )
 
 
-def run(args):
+class Args:
+    plugin: Optional[str]
+    quiet: bool
+    force: bool
+
+
+def run(args: Args) -> int:
     """Run install command"""
     try:
         # Load plugin configurations
         plugin_loader = PluginLoader(COFFEE_CONFIG_DIR)
-        plugins = plugin_loader.load_plugins()
+        plugins: list[dict[str, Any]] = plugin_loader.load_plugins()
 
         if not plugins:
             if not args.quiet:
@@ -39,11 +50,13 @@ def run(args):
                 return 1
 
         # Check which plugins actually need installation
-        plugins_to_install = []
+        plugins_to_install: list[dict[str, Any]] = []
         for plugin in plugins:
             plugin_path = os.path.join(COFFEE_PLUGINS_DIR, plugin["name"])
+
             if not os.path.exists(plugin_path) or args.force:
                 plugins_to_install.append(plugin)
+
             elif not args.quiet:
                 console.print(
                     f"[bold {ACCENT_COLOR}]SKIP[/] {plugin['name']} (already installed)"
@@ -70,7 +83,6 @@ def run(args):
             # Quiet mode - no progress bars
             for plugin in plugins_to_install:
                 success, used_tag = installer._install_git_plugin(plugin)
-
                 if success:
                     installer._update_lock_file(plugin, used_tag)
                 else:
@@ -80,12 +92,12 @@ def run(args):
             # Normal mode with progress bars
             with create_progress() as progress:
                 for plugin in plugins_to_install:
-                    task_id = progress.add_task(
+                    task_id: TaskID = progress.add_task(
                         f"Installing {plugin['name']}", total=100
                     )
 
                     # Fixed callback - only expects percent argument
-                    def callback(percent, task_id=task_id):
+                    def callback(percent: int, task_id: TaskID = task_id) -> None:
                         progress.update(task_id, completed=percent)
 
                     success, used_tag = installer._install_git_plugin_with_progress(
@@ -98,6 +110,7 @@ def run(args):
                         console.print(
                             f"[bold {HIGHLIGHT_COLOR}]SUCCESS[/] Installed {plugin['name']} @ [bold white]{used_tag or 'latest'}[/]"
                         )
+
                     else:
                         progress.update(task_id, completed=0)
                         print_error(f"Failed to install {plugin['name']}")

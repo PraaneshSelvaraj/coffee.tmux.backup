@@ -2,24 +2,33 @@
 Upgrade command implementation
 """
 
+from typing import Any, List, Optional
+
+from rich.progress import TaskID
+
 from core import PluginUpdater
+
 from ..utils import (
     COFFEE_PLUGINS_DIR,
-    print_success,
-    print_error,
-    print_info,
-    create_progress,
+    HIGHLIGHT_COLOR,
     confirm_action,
     console,
-    HIGHLIGHT_COLOR,
+    create_progress,
+    print_error,
+    print_info,
 )
 
 
-def run(args):
+class Args:
+    plugin: Optional[str]
+    quiet: bool
+
+
+def run(args: Args) -> int:
     """Run upgrade command"""
     try:
         updater = PluginUpdater(COFFEE_PLUGINS_DIR)
-        updates = updater.check_for_updates()
+        updates: List[dict[str, Any]] = updater.check_for_updates()
 
         # Filter plugins with available updates
         available_updates = [
@@ -34,7 +43,7 @@ def run(args):
         # Filter for specific plugin if requested
         if args.plugin:
             available_updates = [
-                u for u in available_updates if u["name"] == args.plugin
+                u for u in available_updates if u.get("name") == args.plugin
             ]
             if not available_updates:
                 print_error(f"No updates available for '{args.plugin}'")
@@ -42,7 +51,7 @@ def run(args):
 
         # Confirm upgrade
         if not args.quiet:
-            plugin_names = [u["name"] for u in available_updates]
+            plugin_names = [u.get("name", "Unknown") for u in available_updates]
             if not confirm_action(
                 f"Upgrade {len(available_updates)} plugin(s): {', '.join(plugin_names)}?",
                 True,
@@ -66,25 +75,28 @@ def run(args):
             # Normal mode with progress bars
             with create_progress() as progress:
                 for update in available_updates:
-                    task_id = progress.add_task(
-                        f"Upgrading {update['name']}", total=100
+                    task_id: TaskID = progress.add_task(
+                        f"Upgrading {update.get('name', 'Unknown')}", total=100
                     )
 
-                    # Fixed callback - matches your updater method signature
-                    def callback(plugin_name, percent, task_id=task_id):
+                    # Callback for progress update
+                    def callback(
+                        plugin_name: str, percent: int, task_id: TaskID = task_id
+                    ) -> None:
                         progress.update(task_id, completed=percent)
 
                     success = updater.update_plugin(update, callback)
-
                     if success:
                         success_count += 1
                         progress.update(task_id, completed=100)
                         console.print(
-                            f"[bold {HIGHLIGHT_COLOR}]UPGRADED[/] {update['name']} to [bold white]{update['new_version']}[/]"
+                            f"[bold {HIGHLIGHT_COLOR}]UPGRADED[/] {update.get('name', 'Unknown')} to [bold white]{update.get('new_version', 'N/A')}[/]"
                         )
                     else:
                         progress.update(task_id, completed=0)
-                        print_error(f"Failed to upgrade {update['name']}")
+                        print_error(
+                            f"Failed to upgrade {update.get('name', 'Unknown')}"
+                        )
 
         if not args.quiet:
             if success_count == len(available_updates):

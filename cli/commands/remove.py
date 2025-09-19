@@ -2,32 +2,42 @@
 Remove command implementation
 """
 
+from typing import Callable, Optional
+
+from rich.progress import TaskID
+
 from core import PluginRemover
+
 from ..utils import (
     COFFEE_PLUGINS_DIR,
-    print_success,
+    HIGHLIGHT_COLOR,
+    confirm_action,
+    console,
+    create_progress,
     print_error,
     print_info,
-    confirm_action,
-    create_progress,
-    console,
-    HIGHLIGHT_COLOR,
+    print_success,
 )
 
 
-def run(args):
+class Args:
+    plugin: str
+    force: bool
+    quiet: bool
+
+
+def run(args: Args) -> int:
     """Run remove command"""
     try:
         remover = PluginRemover(COFFEE_PLUGINS_DIR)
         installed_plugins = remover.get_installed_plugins()
 
         # Check if plugin exists
-        plugin_to_remove = None
+        plugin_to_remove: Optional[dict] = None
         for plugin in installed_plugins:
-            if plugin["name"] == args.plugin:
+            if plugin.get("name") == args.plugin:
                 plugin_to_remove = plugin
                 break
-
         if not plugin_to_remove:
             print_error(f"Plugin '{args.plugin}' is not installed")
             return 1
@@ -45,20 +55,24 @@ def run(args):
         if not args.quiet:
             print_info(f"Removing {args.plugin}...")
 
+        success: bool
         if args.quiet:
             # Quiet mode - no progress bar
             success = remover.remove_plugin(args.plugin)
         else:
             # Normal mode with progress bar
             with create_progress() as progress:
-                task_id = progress.add_task(f"Removing {args.plugin}", total=100)
+                task_id: TaskID = progress.add_task(
+                    f"Removing {args.plugin}", total=100
+                )
 
-                # Fixed callback - matches your core method signature
-                def callback(plugin_name, percent, task_id=task_id):
+                # Callback to update progress
+                def callback(
+                    plugin_name: str, percent: int, task_id: TaskID = task_id
+                ) -> None:
                     progress.update(task_id, completed=percent)
 
                 success = remover.remove_plugin(args.plugin, callback)
-
                 if success:
                     progress.update(task_id, completed=100)
 

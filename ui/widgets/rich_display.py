@@ -1,14 +1,17 @@
-from textual.widgets import Static
+from typing import Any
+
 from rich.console import RenderableType
+from textual.widgets import Static
+
+from ..tabs.base import Tab
 from ..tabs.home import HomeTab
 from ..tabs.install import InstallTab
-from ..tabs.update import UpdateTab
 from ..tabs.remove import RemoveTab
-from ..tabs.base import Tab
+from ..tabs.update import UpdateTab
 
 
 class RichDisplay(Static):
-    def __init__(self, app_state):
+    def __init__(self, app_state: Any) -> None:
         super().__init__()
         self.app_state = app_state
 

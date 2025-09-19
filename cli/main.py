@@ -3,28 +3,29 @@
 Coffee CLI - Main entry point
 """
 import argparse
-import sys
 import os
+import sys
+from typing import Any, Optional
 
 # Add current directory to Python path
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, current_dir)
 
-from core import PluginSourcer
 from cli.commands import (
+    disable,
+    enable,
+    info,
     install,
+    list_plugins,
+    remove,
     update,
     upgrade,
-    remove,
-    list_plugins,
-    info,
-    enable,
-    disable,
 )
-from cli.utils import setup_directories, print_version
+from cli.utils import print_version, setup_directories
+from core import PluginSourcer
 
 
-def create_parser():
+def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser"""
     parser = argparse.ArgumentParser(
         prog="coffee",
@@ -43,7 +44,6 @@ Examples:
   coffee disable tmux-sensible Disable plugin
         """,
     )
-
     # Global flags
     parser.add_argument("--version", action="store_true", help="Show version")
     parser.add_argument(
@@ -113,18 +113,17 @@ Examples:
     return parser
 
 
-def main():
+def main() -> int:
     """Main CLI entry point"""
     parser = create_parser()
-    args = parser.parse_args()
+    args: Any = parser.parse_args()
 
     # Handle global flags
-    if args.version:
+    if getattr(args, "version", False):
         print_version()
         return 0
 
-    if args.source_plugins:
-
+    if getattr(args, "source_plugins", False):
         sourcer = PluginSourcer()
         sourcer.source_enabled_plugins()
         return 0
@@ -137,15 +136,15 @@ def main():
         try:
             return args.func(args)
         except KeyboardInterrupt:
-            print("\n❌ Operation cancelled by user")
+            print("\nOperation cancelled by user")
             return 1
         except Exception as e:
-            if args.verbose:
+            if getattr(args, "verbose", False):
                 import traceback
 
                 traceback.print_exc()
             else:
-                print(f"❌ Error: {e}")
+                print(f"Error: {e}")
             return 1
     else:
         parser.print_help()

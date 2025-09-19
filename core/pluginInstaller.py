@@ -1,16 +1,24 @@
+import datetime
 import os
 import subprocess
-import datetime
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 from core import lock_file_manager as lfm
 
 
 class PluginInstaller:
-    def __init__(self, plugins_config, plugins_dir, tmux_conf_path):
+    def __init__(
+        self,
+        plugins_config: List[Dict[str, Any]],
+        plugins_dir: str,
+        tmux_conf_path: str,
+    ) -> None:
         self.plugins_config = plugins_config
         self.plugins_dir = plugins_dir
         self.tmux_conf_path = tmux_conf_path
 
-    def install_all_plugins(self):
+    def install_all_plugins(self) -> None:
+        """Install all plugins configured."""
         for plugin in self.plugins_config:
             print(f"Installing {plugin.get('name')}...")
             success, used_tag = self._install_git_plugin(plugin)
@@ -20,7 +28,7 @@ class PluginInstaller:
             else:
                 print(f"Failed to install {plugin.get('name')}")
 
-    def _install_git_plugin(self, plugin):
+    def _install_git_plugin(self, plugin: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         plugin_path = os.path.join(self.plugins_dir, plugin["name"])
 
         if os.path.exists(plugin_path):
@@ -36,7 +44,6 @@ class PluginInstaller:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-
             subprocess.run(
                 ["git", "fetch", "--tags"],
                 cwd=plugin_path,
@@ -65,13 +72,16 @@ class PluginInstaller:
                     )
                     used_tag = latest_tag
 
-        except Exception as e:
+        except Exception:
             return False, None
 
         return True, used_tag or None
 
-    def _install_git_plugin_with_progress(self, plugin, progress_callback=None):
-        """Install git plugin with progress reporting"""
+    def _install_git_plugin_with_progress(
+        self,
+        plugin: Dict[str, Any],
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> Tuple[bool, Optional[str]]:
         plugin_path = os.path.join(self.plugins_dir, plugin["name"])
 
         if os.path.exists(plugin_path):
@@ -83,11 +93,9 @@ class PluginInstaller:
         used_tag = plugin.get("tag")
 
         try:
-            # Starting installation
             if progress_callback:
                 progress_callback(5)
 
-            # Clone repository
             subprocess.run(
                 ["git", "clone", repo_url, plugin_path],
                 check=True,
@@ -98,7 +106,6 @@ class PluginInstaller:
             if progress_callback:
                 progress_callback(40)
 
-            # Fetch tags
             subprocess.run(
                 ["git", "fetch", "--tags"],
                 cwd=plugin_path,
@@ -122,6 +129,7 @@ class PluginInstaller:
                     progress_callback(90)
             else:
                 latest_tag = self._get_latest_tag(plugin_path)
+
                 if progress_callback:
                     progress_callback(70)
 
@@ -137,15 +145,14 @@ class PluginInstaller:
 
                 if progress_callback:
                     progress_callback(90)
-
-        except Exception as e:
+        except Exception:
             if progress_callback:
                 progress_callback(0)
             return False, None
 
         return True, used_tag or None
 
-    def _get_latest_tag(self, plugin_path):
+    def _get_latest_tag(self, plugin_path: str) -> Optional[str]:
         try:
             result = subprocess.run(
                 ["git", "tag", "--sort=-creatordate"],
@@ -156,21 +163,25 @@ class PluginInstaller:
                 text=True,
             )
             tags = result.stdout.strip().split("\n")
+
             if tags and tags[0]:
                 return tags[0]
             else:
                 return None
+
         except subprocess.CalledProcessError:
             return None
 
-    def _update_lock_file(self, plugin, used_tag):
-        sources = []
+    def _update_lock_file(
+        self, plugin: Dict[str, Any], used_tag: Optional[str]
+    ) -> None:
+        sources: List[str] = []
         plugin_path = os.path.join(self.plugins_dir, plugin["name"])
 
-        for source in plugin["source"]:
+        for source in plugin.get("source", []):
             sources.append(os.path.join(plugin_path, source))
 
-        plugin_data = {
+        plugin_data: Dict[str, Any] = {
             "name": plugin["name"],
             "sources": sources,
             "enabled": plugin.get("enabled", True),
@@ -195,8 +206,9 @@ class PluginInstaller:
 
         lfm.write_lock_file(lock_data)
 
-    def _get_commit_hash(self, plugin):
+    def _get_commit_hash(self, plugin: Dict[str, Any]) -> Optional[str]:
         plugin_path = os.path.join(self.plugins_dir, plugin["name"])
+
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
@@ -209,5 +221,5 @@ class PluginInstaller:
         except subprocess.CalledProcessError:
             return None
 
-    def _get_current_timestamp(self):
+    def _get_current_timestamp(self) -> str:
         return str(datetime.datetime.utcnow())
